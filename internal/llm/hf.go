@@ -17,7 +17,6 @@ import (
 const (
 	defaultHFURL   = "https://router.huggingface.co/v1/chat/completions"
 	defaultHFModel = "deepseek-ai/DeepSeek-R1:cheapest"
-	defaultHFToken = "REDACTED"
 )
 
 func NewHFClient(cfg HFConfig) *HFClient {
@@ -25,7 +24,7 @@ func NewHFClient(cfg HFConfig) *HFClient {
 		cfg.URL = defaultHFURL
 	}
 	if cfg.Token == "" {
-		cfg.Token = defaultHFToken
+		cfg.Token = ""
 	}
 	if cfg.Model == "" {
 		cfg.Model = defaultHFModel

@@ -24,7 +24,7 @@ func main() {
 		port = "8080"
 	}
 
-	hfToken := "REDACTED"
+	hfToken := os.Getenv("HF_TOKEN")
 	// authURL := os.Getenv("AUTH_URL")
 	llmClient := llm.NewHFClient(llm.HFConfig{Token: hfToken})
 
