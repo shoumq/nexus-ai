@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package nexusai.v1;
+
+option go_package = "nexus/proto/nexusai/v1;nexusai";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
+
+service AnalyzerService {
+  rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
+}
+
+message AnalyzeRequest {
+  string user_tz = 1;
+  repeated TrackPoint points = 2;
+  string week_starts = 3;
+  Constraints constraints = 4;
+}
+
+message TrackPoint {
+  google.protobuf.Timestamp ts = 1;
+  double sleep_hours = 2;
+  double mood = 3;
+  double activity = 4;
+  double productive = 5;
+}
+
+message Constraints {
+  int32 work_start_hour = 1;
+  int32 work_end_hour = 2;
+}
+
+message AnalyzeResponse {
+  map<int32, double> energy_by_hour = 1;
+  map<string, double> energy_by_weekday = 2;
+  ProductivityModel productivity_model = 3;
+  BurnoutRisk burnout_risk = 4;
+  OptimalSchedule optimal_schedule = 5;
+  string llm_insight = 6;
+  google.protobuf.Struct debug = 7;
+}
+
+message ProductivityModel {
+  map<string, double> weights = 1;
+  double score = 2;
+}
+
+message BurnoutRisk {
+  double score = 1;
+  string level = 2;
+  repeated string reasons = 3;
+  int32 prediction_horizon_days = 4;
+}
+
+message OptimalSchedule {
+  string suggested_sleep_window = 1;
+  repeated string best_focus_hours = 2;
+  repeated string best_light_tasks_hours = 3;
+  repeated string recovery_tips = 4;
+}

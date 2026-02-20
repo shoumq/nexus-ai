@@ -14,8 +14,8 @@ WORKDIR /app
 
 COPY --from=build /app/bin/nexus /app/nexus
 
-EXPOSE 8080
+EXPOSE 9091
 
-ENV PORT=8080
+ENV GRPC_ADDR=:9091
 
 ENTRYPOINT ["/app/nexus"]

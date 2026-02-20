@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"nexus/internal/dto"
 
 	"github.com/gofiber/fiber/v3"
@@ -15,7 +16,7 @@ func (h *AnalyzeHandler) Handle(c fiber.Ctx) error {
 		return fiber.NewError(fiber.StatusBadRequest, "need at least 2 points for stable analytics")
 	}
 
-	resp, err := h.Analyzer.Analyze(c, req)
+	resp, err := h.Analyzer.Analyze(context.Background(), req)
 	if err != nil {
 		return fiber.NewError(fiber.StatusInternalServerError, "analyze error: "+err.Error())
 	}

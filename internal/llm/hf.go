@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,8 +11,6 @@ import (
 	"nexus/internal/hepler"
 	"regexp"
 	"strings"
-
-	"github.com/gofiber/fiber/v3"
 )
 
 const (
@@ -45,10 +44,10 @@ func NewHFClient(cfg HFConfig) *HFClient {
 	}
 }
 
-func (c *HFClient) CallInsight(fc fiber.Ctx, p dto.HFPrompt) (string, error) {
+func (c *HFClient) CallInsight(ctx context.Context, p dto.HFPrompt) (string, error) {
 	userPrompt := hepler.BuildRussianPrompt(p)
 
-	text1, finish1, err := c.hfChatOnce(fc, c.url, c.token, c.model, c.system, userPrompt, 1200)
+	text1, finish1, err := c.hfChatOnce(ctx, c.url, c.token, c.model, c.system, userPrompt, 1200)
 	if err != nil {
 		return "", err
 	}
@@ -58,7 +57,7 @@ func (c *HFClient) CallInsight(fc fiber.Ctx, p dto.HFPrompt) (string, error) {
 	if isTruncated(finish1, text1) {
 		contPrompt := fmt.Sprintf(hepler.ContinuePromptTmplRU, text1)
 
-		text2, _, err2 := c.hfChatOnce(fc, c.url, c.token, c.model, c.system, contPrompt, 900)
+		text2, _, err2 := c.hfChatOnce(ctx, c.url, c.token, c.model, c.system, contPrompt, 900)
 		if err2 == nil {
 			text2 = toPlainText(text2)
 			text2 = sanitizeInsight(text2, p)
@@ -83,7 +82,7 @@ func (c *HFClient) CallInsight(fc fiber.Ctx, p dto.HFPrompt) (string, error) {
 			text1,
 		)
 
-		fixed, _, err3 := c.hfChatOnce(fc, c.url, c.token, c.model, c.system, rep, 1200)
+		fixed, _, err3 := c.hfChatOnce(ctx, c.url, c.token, c.model, c.system, rep, 1200)
 		if err3 == nil {
 			fixed = toPlainText(fixed)
 			fixed = sanitizeInsight(fixed, p)
@@ -99,7 +98,11 @@ func (c *HFClient) CallInsight(fc fiber.Ctx, p dto.HFPrompt) (string, error) {
 	return text1, nil
 }
 
-func (c *HFClient) hfChatOnce(fc fiber.Ctx, url, token, model, system, user string, maxTokens int) (text string, finishReason string, err error) {
+func (c *HFClient) hfChatOnce(ctx context.Context, url, token, model, system, user string, maxTokens int) (text string, finishReason string, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	reqBody, _ := json.Marshal(dto.HfChatRequest{
 		Model: model,
 		Messages: []dto.HfChatMessage{
@@ -112,7 +115,7 @@ func (c *HFClient) hfChatOnce(fc fiber.Ctx, url, token, model, system, user stri
 		Stream:      false,
 	})
 
-	req, _ := http.NewRequestWithContext(fc.Context(), http.MethodPost, url, bytes.NewReader(reqBody))
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 

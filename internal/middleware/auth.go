@@ -30,13 +30,14 @@ func (m *AuthMiddleware) Handler() fiber.Handler {
 			return c.Next()
 		}
 
-		if m.authURL == "" {
-			return fiber.NewError(fiber.StatusInternalServerError, "auth service url not configured")
-		}
-
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
 			return fiber.NewError(fiber.StatusUnauthorized, "missing Authorization header")
+		}
+
+		if m.authURL == "" {
+			// Fallback: header-only auth check when auth service is not configured.
+			return c.Next()
 		}
 
 		req, err := http.NewRequestWithContext(c.Context(), http.MethodPost, m.authURL, nil)

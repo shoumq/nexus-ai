@@ -9,16 +9,11 @@ import (
 	"nexus/internal/dto"
 	"sort"
 	"time"
-
-	"github.com/gofiber/fiber/v3"
 )
 
-func (a *Analyzer) Analyze(c fiber.Ctx, req dto.AnalyzeRequest) (*dto.AnalyzeResponse, error) {
-	ctx := context.Background()
-	if c != nil {
-		if reqCtx := c.Context(); reqCtx != nil {
-			ctx = reqCtx
-		}
+func (a *Analyzer) Analyze(ctx context.Context, req dto.AnalyzeRequest) (*dto.AnalyzeResponse, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	cacheKey, err := buildCacheKey(req)
 	if err == nil && a.repo != nil {
@@ -65,7 +60,7 @@ func (a *Analyzer) Analyze(c fiber.Ctx, req dto.AnalyzeRequest) (*dto.AnalyzeRes
 	obsHours := analytics.ObservedHoursList(energyByHour)
 	obsDays := analytics.ObservedWeekdaysList(energyByWeekday)
 
-	llmText, err := a.llm.CallInsight(c, dto.HFPrompt{
+	llmText, err := a.llm.CallInsight(ctx, dto.HFPrompt{
 		UserTZ:               req.UserTZ,
 		EnergyByHour:         energyByHour,
 		EnergyByWeekday:      energyByWeekday,

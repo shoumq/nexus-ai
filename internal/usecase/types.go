@@ -4,12 +4,10 @@ import (
 	"context"
 	"nexus/internal/dto"
 	"time"
-
-	"github.com/gofiber/fiber/v3"
 )
 
 type LLMClient interface {
-	CallInsight(c fiber.Ctx, p dto.HFPrompt) (string, error)
+	CallInsight(ctx context.Context, p dto.HFPrompt) (string, error)
 }
 
 type AnalysisRepository interface {

@@ -3,29 +3,32 @@ package main
 import (
 	"context"
 	"log"
+	"net"
 	"nexus/internal/handler"
 	"nexus/internal/llm"
+	"nexus/internal/middleware"
 	"nexus/internal/repository"
 	"nexus/internal/usecase"
+	"nexus/proto/nexusai/v1"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/gofiber/fiber/v3"
-	"github.com/gofiber/fiber/v3/middleware/adaptor"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func main() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	grpcAddr := os.Getenv("GRPC_ADDR")
+	if grpcAddr == "" {
+		grpcAddr = ":9091"
 	}
 
 	hfToken := os.Getenv("HF_TOKEN")
-	// authURL := os.Getenv("AUTH_URL")
+	authURL := os.Getenv("AUTH_URL")
 	llmClient := llm.NewHFClient(llm.HFConfig{Token: hfToken})
 
 	cacheTTL := 15 * time.Minute
@@ -64,21 +67,27 @@ func main() {
 	}
 
 	analyzer := usecase.NewAnalyzer(llmClient, repo, cacheTTL)
-	analyzeHandler := handler.NewAnalyzeHandler(analyzer)
-	// authMW := middleware.NewAuthMiddleware(authURL, nil)
+	analyzeHandler := handler.NewGRPCAnalyzeHandler(analyzer)
+	authMW := middleware.NewAuthGRPCMiddleware(authURL, nil)
 
-	app := fiber.New()
-	app.Use(handler.WithCORS())
-	// app.Use(authMW.Handler())
-	app.Post("/ai/analyze", analyzeHandler.Handler())
-	app.Get("/health", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	app.Get("/ready", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusOK) })
-	app.Get("/metrics", adaptor.HTTPHandler(promhttp.Handler()))
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(authMW.Unary()),
+	)
+	nexusai.RegisterAnalyzerServiceServer(grpcServer, analyzeHandler)
+
+	healthServer := health.NewServer()
+	healthServer.SetServingStatus("", grpc_health_v1.HealthCheckResponse_SERVING)
+	grpc_health_v1.RegisterHealthServer(grpcServer, healthServer)
 
 	errCh := make(chan error, 1)
 	go func() {
-		log.Printf("listening on :%s", port)
-		errCh <- app.Listen(":" + port)
+		lis, err := net.Listen("tcp", grpcAddr)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		log.Printf("grpc listening on %s", grpcAddr)
+		errCh <- grpcServer.Serve(lis)
 	}()
 
 	sigCh := make(chan os.Signal, 1)
@@ -89,13 +98,9 @@ func main() {
 		log.Fatal(err)
 	case sig := <-sigCh:
 		log.Printf("shutdown signal: %s", sig.String())
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
 		if repo != nil {
 			repo.Close()
 		}
-		if err := app.ShutdownWithContext(ctx); err != nil {
-			log.Fatal(err)
-		}
+		grpcServer.GracefulStop()
 	}
 }
