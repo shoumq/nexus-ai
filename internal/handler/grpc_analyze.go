@@ -1,6 +1,7 @@
 package handler
 
 import (
+	authpb "auth_service/proto"
 	"context"
 	"errors"
 	"nexus/internal/dto"
@@ -8,21 +9,47 @@ import (
 	"nexus/proto/nexusai/v1"
 
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
 )
 
 type GRPCAnalyzeHandler struct {
 	nexusai.UnimplementedAnalyzerServiceServer
-	analyzer *usecase.Analyzer
+	analyzer   *usecase.Analyzer
+	authClient authpb.AuthServiceClient
 }
 
-func NewGRPCAnalyzeHandler(analyzer *usecase.Analyzer) *GRPCAnalyzeHandler {
-	return &GRPCAnalyzeHandler{analyzer: analyzer}
+func NewGRPCAnalyzeHandler(analyzer *usecase.Analyzer, authClient authpb.AuthServiceClient) *GRPCAnalyzeHandler {
+	return &GRPCAnalyzeHandler{analyzer: analyzer, authClient: authClient}
+}
+
+func (h *GRPCAnalyzeHandler) Track(ctx context.Context, req *nexusai.TrackRequest) (*nexusai.TrackResponse, error) {
+	userID, err := h.userIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	dtoReq, err := mapTrackRequest(req, userID)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	stored, err := h.analyzer.Track(ctx, dtoReq)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &nexusai.TrackResponse{Stored: int32(stored)}, nil
 }
 
 func (h *GRPCAnalyzeHandler) Analyze(ctx context.Context, req *nexusai.AnalyzeRequest) (*nexusai.AnalyzeResponse, error) {
-	dtoReq, err := mapAnalyzeRequest(req)
+	userID, err := h.userIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	dtoReq, err := mapAnalyzeRequest(req, userID)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -39,15 +66,15 @@ func (h *GRPCAnalyzeHandler) Analyze(ctx context.Context, req *nexusai.AnalyzeRe
 	return out, nil
 }
 
-func mapAnalyzeRequest(in *nexusai.AnalyzeRequest) (dto.AnalyzeRequest, error) {
+func mapTrackRequest(in *nexusai.TrackRequest, userID int32) (dto.TrackRequest, error) {
 	if in == nil {
-		return dto.AnalyzeRequest{}, errors.New("empty request")
+		return dto.TrackRequest{}, errors.New("empty request")
 	}
 
 	points := make([]dto.TrackPoint, 0, len(in.Points))
 	for _, p := range in.Points {
 		if p == nil || p.Ts == nil {
-			return dto.AnalyzeRequest{}, errors.New("point timestamp is required")
+			return dto.TrackRequest{}, errors.New("point timestamp is required")
 		}
 		points = append(points, dto.TrackPoint{
 			TS:         p.Ts.AsTime(),
@@ -56,6 +83,18 @@ func mapAnalyzeRequest(in *nexusai.AnalyzeRequest) (dto.AnalyzeRequest, error) {
 			Activity:   p.Activity,
 			Productive: p.Productive,
 		})
+	}
+
+	return dto.TrackRequest{
+		UserID: userID,
+		UserTZ: in.UserTz,
+		Points: points,
+	}, nil
+}
+
+func mapAnalyzeRequest(in *nexusai.AnalyzeRequest, userID int32) (dto.AnalyzeRequest, error) {
+	if in == nil {
+		return dto.AnalyzeRequest{}, errors.New("empty request")
 	}
 
 	var c dto.Constraints
@@ -67,10 +106,11 @@ func mapAnalyzeRequest(in *nexusai.AnalyzeRequest) (dto.AnalyzeRequest, error) {
 	}
 
 	return dto.AnalyzeRequest{
+		UserID:      userID,
 		UserTZ:      in.UserTz,
-		Points:      points,
 		WeekStarts:  in.WeekStarts,
 		Constraints: c,
+		Period:      mapPeriod(in.Period),
 	}, nil
 }
 
@@ -132,4 +172,50 @@ func mapAnalyzeResponse(in *dto.AnalyzeResponse) (*nexusai.AnalyzeResponse, erro
 	}
 
 	return out, nil
+}
+
+func (h *GRPCAnalyzeHandler) userIDFromContext(ctx context.Context) (int32, error) {
+	if h.authClient == nil {
+		return 0, status.Error(codes.Internal, "auth client not configured")
+	}
+	authHeader := authFromMetadata(ctx)
+	if authHeader == "" {
+		return 0, status.Error(codes.Unauthenticated, "missing authorization")
+	}
+	outCtx := metadata.AppendToOutgoingContext(ctx, "authorization", authHeader)
+	resp, err := h.authClient.Me(outCtx, &authpb.MeRequest{})
+	if err != nil {
+		return 0, status.Error(codes.Unauthenticated, "unauthorized")
+	}
+	if resp == nil || resp.Id == 0 {
+		return 0, status.Error(codes.Unauthenticated, "unauthorized")
+	}
+	return resp.Id, nil
+}
+
+func authFromMetadata(ctx context.Context) string {
+	md, _ := metadata.FromIncomingContext(ctx)
+	if md == nil {
+		return ""
+	}
+	vals := md.Get("authorization")
+	if len(vals) == 0 {
+		return ""
+	}
+	return vals[0]
+}
+
+func mapPeriod(p nexusai.Period) dto.Period {
+	switch p {
+	case nexusai.Period_PERIOD_DAY:
+		return dto.PeriodDay
+	case nexusai.Period_PERIOD_WEEK:
+		return dto.PeriodWeek
+	case nexusai.Period_PERIOD_MONTH:
+		return dto.PeriodMonth
+	case nexusai.Period_PERIOD_ALL:
+		return dto.PeriodAll
+	default:
+		return dto.PeriodUnspecified
+	}
 }

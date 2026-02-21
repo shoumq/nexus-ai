@@ -8,14 +8,32 @@ import "google/protobuf/timestamp.proto";
 import "google/protobuf/struct.proto";
 
 service AnalyzerService {
+  rpc Track(TrackRequest) returns (TrackResponse);
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
+}
+
+message TrackRequest {
+  string user_tz = 1;
+  repeated TrackPoint points = 2;
+}
+
+message TrackResponse {
+  int32 stored = 1;
+}
+
+enum Period {
+  PERIOD_UNSPECIFIED = 0;
+  PERIOD_DAY = 1;
+  PERIOD_WEEK = 2;
+  PERIOD_MONTH = 3;
+  PERIOD_ALL = 4;
 }
 
 message AnalyzeRequest {
   string user_tz = 1;
-  repeated TrackPoint points = 2;
-  string week_starts = 3;
-  Constraints constraints = 4;
+  string week_starts = 2;
+  Constraints constraints = 3;
+  Period period = 4;
 }
 
 message TrackPoint {

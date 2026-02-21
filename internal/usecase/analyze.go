@@ -5,9 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"nexus/internal/domain/analytics"
 	"nexus/internal/dto"
-	"sort"
 	"time"
 )
 
@@ -15,12 +15,8 @@ func (a *Analyzer) Analyze(ctx context.Context, req dto.AnalyzeRequest) (*dto.An
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	cacheKey, err := buildCacheKey(req)
-	if err == nil && a.repo != nil {
-		resp, ok, err := a.repo.GetCachedResponse(ctx, cacheKey)
-		if err == nil && ok {
-			return resp, nil
-		}
+	if req.UserID <= 0 {
+		return nil, errors.New("user id is required")
 	}
 
 	loc := time.UTC
@@ -31,12 +27,28 @@ func (a *Analyzer) Analyze(ctx context.Context, req dto.AnalyzeRequest) (*dto.An
 		}
 	}
 
-	pts := make([]dto.TrackPoint, 0, len(req.Points))
-	for _, p := range req.Points {
-		p.TS = p.TS.In(loc)
-		pts = append(pts, p)
+	cacheKey, err := buildCacheKey(req)
+	if err == nil && a.repo != nil {
+		resp, ok, err := a.repo.GetCachedResponse(ctx, cacheKey)
+		if err == nil && ok {
+			return resp, nil
+		}
 	}
-	sort.Slice(pts, func(i, j int) bool { return pts[i].TS.Before(pts[j].TS) })
+
+	start, end := periodRange(req.Period, time.Now().In(loc))
+	if a.repo == nil {
+		return nil, errors.New("repository not configured")
+	}
+	pts, err := a.repo.GetTrackPoints(ctx, req.UserID, start.UTC(), end.UTC())
+	if err != nil {
+		return nil, err
+	}
+	if len(pts) < 2 {
+		return nil, errors.New("need at least 2 points for stable analytics")
+	}
+	for i := range pts {
+		pts[i].TS = pts[i].TS.In(loc)
+	}
 
 	energyByHour := analytics.ComputeEnergyByHour(pts)
 	energyByWeekday := analytics.ComputeEnergyByWeekday(pts)
@@ -93,16 +105,24 @@ func (a *Analyzer) Analyze(ctx context.Context, req dto.AnalyzeRequest) (*dto.An
 	return resp, nil
 }
 
+func (a *Analyzer) Track(ctx context.Context, req dto.TrackRequest) (int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.repo == nil {
+		return 0, errors.New("repository not configured")
+	}
+	if req.UserID <= 0 {
+		return 0, errors.New("user id is required")
+	}
+	if len(req.Points) == 0 {
+		return 0, nil
+	}
+	return a.repo.SaveTrackPoints(ctx, req.UserID, req.Points)
+}
+
 func buildCacheKey(req dto.AnalyzeRequest) (string, error) {
 	normalized := req
-	if len(req.Points) > 0 {
-		normalized.Points = append([]dto.TrackPoint(nil), req.Points...)
-	}
-	if len(normalized.Points) > 1 {
-		sort.Slice(normalized.Points, func(i, j int) bool {
-			return normalized.Points[i].TS.Before(normalized.Points[j].TS)
-		})
-	}
 	payload, err := json.Marshal(normalized)
 	if err != nil {
 		return "", err
@@ -117,4 +137,19 @@ func (a *Analyzer) storeResult(ctx context.Context, key string, req dto.AnalyzeR
 	}
 	_ = a.repo.CacheResponse(ctx, key, resp, a.cacheTTL)
 	_ = a.repo.SaveAnalysis(ctx, key, req, resp)
+}
+
+func periodRange(period dto.Period, now time.Time) (time.Time, time.Time) {
+	switch period {
+	case dto.PeriodDay:
+		return now.AddDate(0, 0, -1), now
+	case dto.PeriodWeek:
+		return now.AddDate(0, 0, -7), now
+	case dto.PeriodMonth:
+		return now.AddDate(0, -1, 0), now
+	case dto.PeriodAll, dto.PeriodUnspecified:
+		return time.Time{}, now
+	default:
+		return time.Time{}, now
+	}
 }

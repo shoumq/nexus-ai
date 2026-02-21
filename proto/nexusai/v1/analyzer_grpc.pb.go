@@ -19,6 +19,7 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
+	AnalyzerService_Track_FullMethodName   = "/nexusai.v1.AnalyzerService/Track"
 	AnalyzerService_Analyze_FullMethodName = "/nexusai.v1.AnalyzerService/Analyze"
 )
 
@@ -26,6 +27,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AnalyzerServiceClient interface {
+	Track(ctx context.Context, in *TrackRequest, opts ...grpc.CallOption) (*TrackResponse, error)
 	Analyze(ctx context.Context, in *AnalyzeRequest, opts ...grpc.CallOption) (*AnalyzeResponse, error)
 }
 
@@ -35,6 +37,15 @@ type analyzerServiceClient struct {
 
 func NewAnalyzerServiceClient(cc grpc.ClientConnInterface) AnalyzerServiceClient {
 	return &analyzerServiceClient{cc}
+}
+
+func (c *analyzerServiceClient) Track(ctx context.Context, in *TrackRequest, opts ...grpc.CallOption) (*TrackResponse, error) {
+	out := new(TrackResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_Track_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *analyzerServiceClient) Analyze(ctx context.Context, in *AnalyzeRequest, opts ...grpc.CallOption) (*AnalyzeResponse, error) {
@@ -50,6 +61,7 @@ func (c *analyzerServiceClient) Analyze(ctx context.Context, in *AnalyzeRequest,
 // All implementations must embed UnimplementedAnalyzerServiceServer
 // for forward compatibility
 type AnalyzerServiceServer interface {
+	Track(context.Context, *TrackRequest) (*TrackResponse, error)
 	Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error)
 	mustEmbedUnimplementedAnalyzerServiceServer()
 }
@@ -58,6 +70,9 @@ type AnalyzerServiceServer interface {
 type UnimplementedAnalyzerServiceServer struct {
 }
 
+func (UnimplementedAnalyzerServiceServer) Track(context.Context, *TrackRequest) (*TrackResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Track not implemented")
+}
 func (UnimplementedAnalyzerServiceServer) Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Analyze not implemented")
 }
@@ -72,6 +87,24 @@ type UnsafeAnalyzerServiceServer interface {
 
 func RegisterAnalyzerServiceServer(s grpc.ServiceRegistrar, srv AnalyzerServiceServer) {
 	s.RegisterService(&AnalyzerService_ServiceDesc, srv)
+}
+
+func _AnalyzerService_Track_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TrackRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).Track(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_Track_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).Track(ctx, req.(*TrackRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _AnalyzerService_Analyze_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -99,6 +132,10 @@ var AnalyzerService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "nexusai.v1.AnalyzerService",
 	HandlerType: (*AnalyzerServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Track",
+			Handler:    _AnalyzerService_Track_Handler,
+		},
 		{
 			MethodName: "Analyze",
 			Handler:    _AnalyzerService_Analyze_Handler,

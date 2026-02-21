@@ -14,6 +14,8 @@ type AnalysisRepository interface {
 	GetCachedResponse(ctx context.Context, key string) (*dto.AnalyzeResponse, bool, error)
 	CacheResponse(ctx context.Context, key string, resp dto.AnalyzeResponse, ttl time.Duration) error
 	SaveAnalysis(ctx context.Context, key string, req dto.AnalyzeRequest, resp dto.AnalyzeResponse) error
+	SaveTrackPoints(ctx context.Context, userID int32, pts []dto.TrackPoint) (int, error)
+	GetTrackPoints(ctx context.Context, userID int32, from, to time.Time) ([]dto.TrackPoint, error)
 }
 
 type Analyzer struct {

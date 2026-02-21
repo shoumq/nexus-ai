@@ -16,7 +16,9 @@ import (
 	"syscall"
 	"time"
 
+	authpb "auth_service/proto"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
 	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 )
@@ -29,6 +31,10 @@ func main() {
 
 	hfToken := os.Getenv("HF_TOKEN")
 	authURL := os.Getenv("AUTH_URL")
+	authGRPCAddr := os.Getenv("AUTH_GRPC_ADDR")
+	if authGRPCAddr == "" {
+		authGRPCAddr = "auth_service:9090"
+	}
 	llmClient := llm.NewHFClient(llm.HFConfig{Token: hfToken})
 
 	cacheTTL := 15 * time.Minute
@@ -67,7 +73,14 @@ func main() {
 	}
 
 	analyzer := usecase.NewAnalyzer(llmClient, repo, cacheTTL)
-	analyzeHandler := handler.NewGRPCAnalyzeHandler(analyzer)
+	authConn, err := grpc.Dial(authGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("auth grpc dial: %v", err)
+	}
+	defer authConn.Close()
+
+	authClient := authpb.NewAuthServiceClient(authConn)
+	analyzeHandler := handler.NewGRPCAnalyzeHandler(analyzer, authClient)
 	authMW := middleware.NewAuthGRPCMiddleware(authURL, nil)
 
 	grpcServer := grpc.NewServer(

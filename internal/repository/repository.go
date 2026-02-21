@@ -8,6 +8,7 @@ import (
 
 	"nexus/internal/dto"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -111,6 +112,70 @@ func (r *Repository) SaveAnalysis(ctx context.Context, key string, req dto.Analy
 		    created_at = excluded.created_at
 	`, key, reqJSON, respJSON)
 	return err
+}
+
+func (r *Repository) SaveTrackPoints(ctx context.Context, userID int32, pts []dto.TrackPoint) (int, error) {
+	if r.pg == nil {
+		return 0, errors.New("repository: postgres not configured")
+	}
+	if userID <= 0 || len(pts) == 0 {
+		return 0, nil
+	}
+
+	batch := &pgx.Batch{}
+	for _, p := range pts {
+		batch.Queue(`
+			insert into track_points (user_id, ts, sleep_hours, mood, activity, productive)
+			values ($1, $2, $3, $4, $5, $6)
+			on conflict (user_id, time_bucket_5m) do nothing
+		`, userID, p.TS, p.SleepHours, p.Mood, p.Activity, p.Productive)
+	}
+
+	br := r.pg.SendBatch(ctx, batch)
+	defer br.Close()
+
+	inserted := 0
+	for range pts {
+		ct, err := br.Exec()
+		if err != nil {
+			return inserted, err
+		}
+		inserted += int(ct.RowsAffected())
+	}
+	return inserted, nil
+}
+
+func (r *Repository) GetTrackPoints(ctx context.Context, userID int32, from, to time.Time) ([]dto.TrackPoint, error) {
+	if r.pg == nil {
+		return nil, errors.New("repository: postgres not configured")
+	}
+	if userID <= 0 {
+		return nil, errors.New("repository: invalid user id")
+	}
+
+	rows, err := r.pg.Query(ctx, `
+		select ts, sleep_hours, mood, activity, productive
+		from track_points
+		where user_id = $1 and ts >= $2 and ts <= $3
+		order by ts asc
+	`, userID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []dto.TrackPoint
+	for rows.Next() {
+		var p dto.TrackPoint
+		if err := rows.Scan(&p.TS, &p.SleepHours, &p.Mood, &p.Activity, &p.Productive); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func cacheKey(key string) string {

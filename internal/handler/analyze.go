@@ -12,9 +12,6 @@ func (h *AnalyzeHandler) Handle(c fiber.Ctx) error {
 	if err := c.Bind().Body(&req); err != nil {
 		return fiber.NewError(fiber.StatusBadRequest, "bad json: "+err.Error())
 	}
-	if len(req.Points) < 2 {
-		return fiber.NewError(fiber.StatusBadRequest, "need at least 2 points for stable analytics")
-	}
 
 	resp, err := h.Analyzer.Analyze(context.Background(), req)
 	if err != nil {

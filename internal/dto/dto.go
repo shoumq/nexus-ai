@@ -12,11 +12,28 @@ type TrackPoint struct {
 	Productive float64   `json:"productive"`
 }
 
+type Period string
+
+const (
+	PeriodUnspecified Period = ""
+	PeriodDay         Period = "day"
+	PeriodWeek        Period = "week"
+	PeriodMonth       Period = "month"
+	PeriodAll         Period = "all"
+)
+
+type TrackRequest struct {
+	UserID int32        `json:"-"`
+	UserTZ string       `json:"user_tz"`
+	Points []TrackPoint `json:"points"`
+}
+
 type AnalyzeRequest struct {
-	UserTZ      string       `json:"user_tz"`
-	Points      []TrackPoint `json:"points"`
-	WeekStarts  string       `json:"week_starts"`
-	Constraints Constraints  `json:"constraints"`
+	UserID      int32       `json:"-"`
+	UserTZ      string      `json:"user_tz"`
+	WeekStarts  string      `json:"week_starts"`
+	Constraints Constraints `json:"constraints"`
+	Period      Period      `json:"period"`
 }
 
 type Constraints struct {
