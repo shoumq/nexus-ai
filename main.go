@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"net"
+	"net/http"
 	"nexus/internal/handler"
 	"nexus/internal/llm"
 	"nexus/internal/middleware"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	authpb "auth_service/proto"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
@@ -35,7 +37,24 @@ func main() {
 	if authGRPCAddr == "" {
 		authGRPCAddr = "auth_service:9090"
 	}
-	llmClient := llm.NewHFClient(llm.HFConfig{Token: hfToken})
+
+	disableLLM := os.Getenv("DISABLE_LLM") == "1" || os.Getenv("DISABLE_LLM") == "true"
+	hfTimeout := 20 * time.Second
+	if v := os.Getenv("HF_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			hfTimeout = d
+		}
+	}
+
+	var llmClient llm.HFClient
+	if !disableLLM && hfToken != "" {
+		llmClient = *llm.NewHFClient(llm.HFConfig{
+			Token:      hfToken,
+			HTTPClient: &http.Client{Timeout: hfTimeout},
+		})
+	} else {
+		log.Printf("llm disabled: disable=%v token=%v", disableLLM, hfToken != "")
+	}
 
 	cacheTTL := 15 * time.Minute
 	if v := os.Getenv("CACHE_TTL"); v != "" {
@@ -72,7 +91,12 @@ func main() {
 		repo = r
 	}
 
-	analyzer := usecase.NewAnalyzer(llmClient, repo, cacheTTL)
+	var llmPtr usecase.LLMClient
+	if !disableLLM && hfToken != "" {
+		llmPtr = &llmClient
+	}
+
+	analyzer := usecase.NewAnalyzer(llmPtr, repo, cacheTTL)
 	authConn, err := grpc.Dial(authGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("auth grpc dial: %v", err)

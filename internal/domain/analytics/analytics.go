@@ -27,7 +27,7 @@ func ComputeEnergyByHour(pts []dto.TrackPoint) map[int]float64 {
 
 	for _, p := range pts {
 		h := p.TS.Hour()
-		e := energyScore(p.SleepHours, p.Mood, p.Activity)
+		e := energyScore(p)
 		sum[h] += e
 		cnt[h]++
 	}
@@ -51,7 +51,7 @@ func ComputeEnergyByWeekday(pts []dto.TrackPoint) map[string]float64 {
 
 	for _, p := range pts {
 		d := p.TS.Weekday()
-		e := energyScore(p.SleepHours, p.Mood, p.Activity)
+		e := energyScore(p)
 		daySum[d] += e
 		dayCnt[d]++
 	}
@@ -68,21 +68,33 @@ func ComputeEnergyByWeekday(pts []dto.TrackPoint) map[string]float64 {
 
 func ComputeProductivityModel(pts []dto.TrackPoint, energyByHour map[int]float64, c dto.Constraints) dto.ProductivityModel {
 	weights := map[string]float64{
-		"energy_mean":   0.55,
-		"energy_stable": 0.20,
-		"sleep_ok":      0.15,
-		"mood_ok":       0.10,
+		"energy_mean":    0.40,
+		"energy_stable":  0.15,
+		"sleep_ok":       0.10,
+		"mood_ok":        0.10,
+		"sleep_quality":  0.08,
+		"focus_ok":       0.07,
+		"stress_ok":      0.05,
+		"self_energy_ok": 0.05,
 	}
 
 	meanEnergy := meanMap(energyByHour)
 	stability := 100 - stdMap(energyByHour)
 	sleepOK := percentSleepInRange(pts, 7.0, 9.0)
 	moodOK := percentMoodAbove(pts, 6.5)
+	sleepQualityOK := percentFieldAbove(pts, func(p dto.TrackPoint) float64 { return p.SleepQuality }, 6.5)
+	focusOK := percentFieldAbove(pts, func(p dto.TrackPoint) float64 { return p.Concentration }, 6.0)
+	stressOK := percentFieldBelow(pts, func(p dto.TrackPoint) float64 { return p.Stress }, 5.5)
+	selfEnergyOK := percentFieldAbove(pts, func(p dto.TrackPoint) float64 { return p.Energy }, 6.0)
 
 	score := weights["energy_mean"]*meanEnergy +
 		weights["energy_stable"]*stability +
 		weights["sleep_ok"]*sleepOK +
-		weights["mood_ok"]*moodOK
+		weights["mood_ok"]*moodOK +
+		weights["sleep_quality"]*sleepQualityOK +
+		weights["focus_ok"]*focusOK +
+		weights["stress_ok"]*stressOK +
+		weights["self_energy_ok"]*selfEnergyOK
 
 	if c.WorkStartHour >= 0 && c.WorkEndHour > c.WorkStartHour {
 		wh := meanHourRange(energyByHour, c.WorkStartHour, c.WorkEndHour)
@@ -102,23 +114,48 @@ func ComputeBurnoutRisk(pts []dto.TrackPoint, model dto.ProductivityModel) dto.B
 	moodDown := moodTrend(pts, 14) < -0.15
 	energyVolatile := energyVolatility(pts, 14) > 18.0
 	lowProd := model.Score < 45
+	highStress := avgField(pts, func(p dto.TrackPoint) float64 { return p.Stress }) > 6.5
+	lowSelfEnergy := avgField(pts, func(p dto.TrackPoint) float64 { return p.Energy }) < 4.5
+	poorSleepQuality := avgField(pts, func(p dto.TrackPoint) float64 { return p.SleepQuality }) < 6.0
+	alcoholOften := percentBool(pts, func(p dto.TrackPoint) bool { return p.Alcohol }) > 30
+	workoutRare := percentBool(pts, func(p dto.TrackPoint) bool { return p.Workout }) < 20
 
 	score := 0.0
 	if sleepDebt {
-		score += 30
+		score += 25
 		reasons = append(reasons, "Накопление недосыпа за последние ~2 недели")
 	}
 	if moodDown {
-		score += 25
+		score += 20
 		reasons = append(reasons, "Нисходящий тренд настроения за последние ~2 недели")
 	}
 	if energyVolatile {
-		score += 20
+		score += 15
 		reasons = append(reasons, "Высокая волатильность энергии (резкие скачки)")
 	}
 	if lowProd {
-		score += 25
+		score += 20
 		reasons = append(reasons, "Низкий интегральный показатель продуктивности")
+	}
+	if highStress {
+		score += 20
+		reasons = append(reasons, "Высокий уровень стресса по самооценке")
+	}
+	if lowSelfEnergy {
+		score += 15
+		reasons = append(reasons, "Низкая самооценка энергии")
+	}
+	if poorSleepQuality {
+		score += 10
+		reasons = append(reasons, "Низкое качество сна в среднем")
+	}
+	if alcoholOften {
+		score += 10
+		reasons = append(reasons, "Частые отметки алкоголя")
+	}
+	if workoutRare {
+		score += 5
+		reasons = append(reasons, "Низкая регулярность тренировок")
 	}
 
 	score = clamp(score, 0, 100)
@@ -219,12 +256,30 @@ func smoothObservedHours(m map[int]float64, radius int) map[int]float64 {
 	return out
 }
 
-func energyScore(sleepHours, mood, activity float64) float64 {
-	sleepComponent := 100 * math.Exp(-math.Pow((sleepHours-7.75)/2.0, 2))
-	moodComponent := clamp01(mood/10.0) * 100
-	actComponent := clamp01(activity/10.0) * 100
+func energyScore(p dto.TrackPoint) float64 {
+	sleepComponent := 100 * math.Exp(-math.Pow((p.SleepHours-7.75)/2.0, 2))
+	sleepQuality := clamp01(p.SleepQuality/10.0) * 100
+	moodComponent := clamp01(p.Mood/10.0) * 100
+	actComponent := clamp01(p.Activity/10.0) * 100
+	energySelf := clamp01(p.Energy/10.0) * 100
+	focusComponent := clamp01(p.Concentration/10.0) * 100
 
-	e := 0.45*sleepComponent + 0.35*moodComponent + 0.20*actComponent
+	e := 0.32*sleepComponent +
+		0.13*sleepQuality +
+		0.20*moodComponent +
+		0.12*actComponent +
+		0.18*energySelf +
+		0.05*focusComponent
+
+	if p.Caffeine {
+		e += 2.5
+	}
+	if p.Alcohol {
+		e -= 4.0
+	}
+	if p.Workout {
+		e += 1.5
+	}
 	return clamp(e, 0, 100)
 }
 
@@ -352,6 +407,9 @@ func stdMap(m map[int]float64) float64 {
 }
 
 func percentSleepInRange(pts []dto.TrackPoint, lo, hi float64) float64 {
+	if len(pts) == 0 {
+		return 0
+	}
 	var ok float64
 	for _, p := range pts {
 		if p.SleepHours >= lo && p.SleepHours <= hi {
@@ -362,9 +420,51 @@ func percentSleepInRange(pts []dto.TrackPoint, lo, hi float64) float64 {
 }
 
 func percentMoodAbove(pts []dto.TrackPoint, thr float64) float64 {
+	if len(pts) == 0 {
+		return 0
+	}
 	var ok float64
 	for _, p := range pts {
 		if p.Mood >= thr {
+			ok++
+		}
+	}
+	return 100 * ok / float64(len(pts))
+}
+
+func percentFieldAbove(pts []dto.TrackPoint, f func(dto.TrackPoint) float64, thr float64) float64 {
+	if len(pts) == 0 {
+		return 0
+	}
+	var ok float64
+	for _, p := range pts {
+		if f(p) >= thr {
+			ok++
+		}
+	}
+	return 100 * ok / float64(len(pts))
+}
+
+func percentFieldBelow(pts []dto.TrackPoint, f func(dto.TrackPoint) float64, thr float64) float64 {
+	if len(pts) == 0 {
+		return 0
+	}
+	var ok float64
+	for _, p := range pts {
+		if f(p) <= thr {
+			ok++
+		}
+	}
+	return 100 * ok / float64(len(pts))
+}
+
+func percentBool(pts []dto.TrackPoint, f func(dto.TrackPoint) bool) float64 {
+	if len(pts) == 0 {
+		return 0
+	}
+	var ok float64
+	for _, p := range pts {
+		if f(p) {
 			ok++
 		}
 	}
@@ -415,12 +515,23 @@ func avgMood(pts []dto.TrackPoint) float64 {
 	return s / float64(len(pts))
 }
 
+func avgField(pts []dto.TrackPoint, f func(dto.TrackPoint) float64) float64 {
+	if len(pts) == 0 {
+		return 0
+	}
+	var s float64
+	for _, p := range pts {
+		s += f(p)
+	}
+	return s / float64(len(pts))
+}
+
 func energyVolatility(pts []dto.TrackPoint, days int) float64 {
 	cut := pts[len(pts)-1].TS.AddDate(0, 0, -days)
 	var vals []float64
 	for _, p := range pts {
 		if p.TS.After(cut) {
-			vals = append(vals, energyScore(p.SleepHours, p.Mood, p.Activity))
+			vals = append(vals, energyScore(p))
 		}
 	}
 	if len(vals) < 5 {

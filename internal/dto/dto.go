@@ -5,11 +5,19 @@ import "time"
 // ====== INPUT/OUTPUT domain ======
 
 type TrackPoint struct {
-	TS         time.Time `json:"ts"`
-	SleepHours float64   `json:"sleep_hours"`
-	Mood       float64   `json:"mood"`
-	Activity   float64   `json:"activity"`
-	Productive float64   `json:"productive"`
+	TS            time.Time `json:"ts"`
+	SleepHours    float64   `json:"sleep_hours"`
+	Mood          float64   `json:"mood"`
+	Activity      float64   `json:"activity"`
+	Productive    float64   `json:"productive"`
+	Stress        float64   `json:"stress"`
+	Energy        float64   `json:"energy"`
+	Concentration float64   `json:"concentration"`
+	SleepQuality  float64   `json:"sleep_quality"`
+	Caffeine      bool      `json:"caffeine"`
+	Alcohol       bool      `json:"alcohol"`
+	Workout       bool      `json:"workout"`
+	LLMText       string    `json:"llm_text"`
 }
 
 type Period string
@@ -42,7 +50,6 @@ type Constraints struct {
 }
 
 type AnalyzeResponse struct {
-	EnergyByHour      map[int]float64    `json:"energy_by_hour"`
 	EnergyByWeekday   map[string]float64 `json:"energy_by_weekday"`
 	ProductivityModel ProductivityModel  `json:"productivity_model"`
 	BurnoutRisk       BurnoutRisk        `json:"burnout_risk"`
@@ -93,6 +100,7 @@ type HFPrompt struct {
 	NumObservedWeekdays  int
 	ObservedHoursList    string
 	ObservedWeekdaysList string
+	UserNotes            string
 }
 
 // ====== HF chat API payloads ======

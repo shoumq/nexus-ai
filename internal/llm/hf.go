@@ -190,6 +190,17 @@ func cleanLLMText(s string) string {
 
 	s = strings.TrimLeft(s, "\n\r\t ")
 
+	s = strings.TrimSpace(s)
+
+	// If the model returned reasoning or preamble, keep only the final 4-block answer.
+	if idx := strings.Index(s, "\nЭнергия"); idx >= 0 {
+		s = strings.TrimSpace(s[idx+1:])
+	} else if strings.HasPrefix(s, "Энергия") == false {
+		if idx := strings.Index(s, "Энергия"); idx >= 0 {
+			s = strings.TrimSpace(s[idx:])
+		}
+	}
+
 	return strings.TrimSpace(s)
 }
 
@@ -354,6 +365,12 @@ func validateInsight(text string, p dto.HFPrompt) bool {
 	actions := splitActions(block)
 	if len(actions) != 3 {
 		return false
+	}
+
+	if strings.TrimSpace(p.UserNotes) != "" {
+		if !strings.Contains(t, "Заметки:") {
+			return false
+		}
 	}
 
 	return true

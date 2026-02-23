@@ -42,6 +42,14 @@ message TrackPoint {
   double mood = 3;
   double activity = 4;
   double productive = 5;
+  double stress = 6;
+  double energy = 7;
+  double concentration = 8;
+  double sleep_quality = 9;
+  bool caffeine = 10;
+  bool alcohol = 11;
+  bool workout = 12;
+  string llm_text = 13;
 }
 
 message Constraints {
@@ -50,13 +58,12 @@ message Constraints {
 }
 
 message AnalyzeResponse {
-  map<int32, double> energy_by_hour = 1;
-  map<string, double> energy_by_weekday = 2;
-  ProductivityModel productivity_model = 3;
-  BurnoutRisk burnout_risk = 4;
-  OptimalSchedule optimal_schedule = 5;
-  string llm_insight = 6;
-  google.protobuf.Struct debug = 7;
+  map<string, double> energy_by_weekday = 1;
+  ProductivityModel productivity_model = 2;
+  BurnoutRisk burnout_risk = 3;
+  OptimalSchedule optimal_schedule = 4;
+  string llm_insight = 5;
+  google.protobuf.Struct debug = 6;
 }
 
 message ProductivityModel {

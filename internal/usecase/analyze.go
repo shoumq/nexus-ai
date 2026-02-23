@@ -8,6 +8,7 @@ import (
 	"errors"
 	"nexus/internal/domain/analytics"
 	"nexus/internal/dto"
+	"strings"
 	"time"
 )
 
@@ -28,9 +29,9 @@ func (a *Analyzer) Analyze(ctx context.Context, req dto.AnalyzeRequest) (*dto.An
 	}
 
 	cacheKey, err := buildCacheKey(req)
-	if err == nil && a.repo != nil {
+	if err == nil && a.repo != nil && a.llm == nil {
 		resp, ok, err := a.repo.GetCachedResponse(ctx, cacheKey)
-		if err == nil && ok {
+		if err == nil && ok && resp != nil {
 			return resp, nil
 		}
 	}
@@ -71,28 +72,32 @@ func (a *Analyzer) Analyze(ctx context.Context, req dto.AnalyzeRequest) (*dto.An
 
 	obsHours := analytics.ObservedHoursList(energyByHour)
 	obsDays := analytics.ObservedWeekdaysList(energyByWeekday)
+	userNotes := buildUserNotes(pts, 1200)
 
-	llmText, err := a.llm.CallInsight(ctx, dto.HFPrompt{
-		UserTZ:               req.UserTZ,
-		EnergyByHour:         energyByHour,
-		EnergyByWeekday:      energyByWeekday,
-		ProductivityScore:    model.Score,
-		BurnoutScore:         risk.Score,
-		BurnoutLevel:         risk.Level,
-		BurnoutReasons:       risk.Reasons,
-		ProposedSchedule:     schedule,
-		NumPoints:            len(pts),
-		NumObservedHours:     len(energyByHour),
-		NumObservedWeekdays:  len(energyByWeekday),
-		ObservedHoursList:    obsHours,
-		ObservedWeekdaysList: obsDays,
-	})
-	if err != nil {
-		llmText = "LLM insight unavailable: " + err.Error()
+	llmText := "LLM disabled"
+	if a.llm != nil {
+		llmText, err = a.llm.CallInsight(ctx, dto.HFPrompt{
+			UserTZ:               req.UserTZ,
+			EnergyByHour:         energyByHour,
+			EnergyByWeekday:      energyByWeekday,
+			ProductivityScore:    model.Score,
+			BurnoutScore:         risk.Score,
+			BurnoutLevel:         risk.Level,
+			BurnoutReasons:       risk.Reasons,
+			ProposedSchedule:     schedule,
+			NumPoints:            len(pts),
+			NumObservedHours:     len(energyByHour),
+			NumObservedWeekdays:  len(energyByWeekday),
+			ObservedHoursList:    obsHours,
+			ObservedWeekdaysList: obsDays,
+			UserNotes:            userNotes,
+		})
+		if err != nil {
+			llmText = "LLM insight unavailable: " + err.Error()
+		}
 	}
 
 	resp := &dto.AnalyzeResponse{
-		EnergyByHour:      energyByHour,
 		EnergyByWeekday:   energyByWeekday,
 		ProductivityModel: model,
 		BurnoutRisk:       risk,
@@ -135,7 +140,9 @@ func (a *Analyzer) storeResult(ctx context.Context, key string, req dto.AnalyzeR
 	if a.repo == nil || key == "" {
 		return
 	}
-	_ = a.repo.CacheResponse(ctx, key, resp, a.cacheTTL)
+	cacheResp := resp
+	cacheResp.LLMInsight = ""
+	_ = a.repo.CacheResponse(ctx, key, cacheResp, a.cacheTTL)
 	_ = a.repo.SaveAnalysis(ctx, key, req, resp)
 }
 
@@ -152,4 +159,30 @@ func periodRange(period dto.Period, now time.Time) (time.Time, time.Time) {
 	default:
 		return time.Time{}, now
 	}
+}
+
+func buildUserNotes(pts []dto.TrackPoint, maxLen int) string {
+	if len(pts) == 0 || maxLen <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, p := range pts {
+		txt := strings.TrimSpace(p.LLMText)
+		if txt == "" {
+			continue
+		}
+		line := p.TS.Format("2006-01-02 15:04") + " — " + txt
+		if b.Len() > 0 {
+			line = "\n" + line
+		}
+		if b.Len()+len(line) > maxLen {
+			remain := maxLen - b.Len()
+			if remain > 0 {
+				b.WriteString(line[:remain])
+			}
+			break
+		}
+		b.WriteString(line)
+	}
+	return b.String()
 }

@@ -124,11 +124,18 @@ func (r *Repository) SaveTrackPoints(ctx context.Context, userID int32, pts []dt
 
 	batch := &pgx.Batch{}
 	for _, p := range pts {
+		bucket := p.TS.Unix() / 300
 		batch.Queue(`
-			insert into track_points (user_id, ts, sleep_hours, mood, activity, productive)
-			values ($1, $2, $3, $4, $5, $6)
+			insert into track_points (
+				user_id, ts, sleep_hours, mood, activity, productive,
+				stress, energy, concentration, sleep_quality,
+				caffeine, alcohol, workout, llm_text, time_bucket_5m
+			)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 			on conflict (user_id, time_bucket_5m) do nothing
-		`, userID, p.TS, p.SleepHours, p.Mood, p.Activity, p.Productive)
+		`, userID, p.TS, p.SleepHours, p.Mood, p.Activity, p.Productive,
+			p.Stress, p.Energy, p.Concentration, p.SleepQuality,
+			p.Caffeine, p.Alcohol, p.Workout, p.LLMText, bucket)
 	}
 
 	br := r.pg.SendBatch(ctx, batch)
@@ -154,7 +161,9 @@ func (r *Repository) GetTrackPoints(ctx context.Context, userID int32, from, to 
 	}
 
 	rows, err := r.pg.Query(ctx, `
-		select ts, sleep_hours, mood, activity, productive
+		select ts, sleep_hours, mood, activity, productive,
+		       stress, energy, concentration, sleep_quality,
+		       caffeine, alcohol, workout, llm_text
 		from track_points
 		where user_id = $1 and ts >= $2 and ts <= $3
 		order by ts asc
@@ -167,7 +176,11 @@ func (r *Repository) GetTrackPoints(ctx context.Context, userID int32, from, to 
 	var out []dto.TrackPoint
 	for rows.Next() {
 		var p dto.TrackPoint
-		if err := rows.Scan(&p.TS, &p.SleepHours, &p.Mood, &p.Activity, &p.Productive); err != nil {
+		if err := rows.Scan(
+			&p.TS, &p.SleepHours, &p.Mood, &p.Activity, &p.Productive,
+			&p.Stress, &p.Energy, &p.Concentration, &p.SleepQuality,
+			&p.Caffeine, &p.Alcohol, &p.Workout, &p.LLMText,
+		); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

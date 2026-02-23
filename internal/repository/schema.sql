@@ -15,7 +15,15 @@ create table if not exists track_points (
 	mood double precision not null,
 	activity double precision not null,
 	productive double precision not null,
-	time_bucket_5m bigint generated always as (floor(extract(epoch from ts) / 300)) stored,
+	stress double precision not null default 0,
+	energy double precision not null default 0,
+	concentration double precision not null default 0,
+	sleep_quality double precision not null default 0,
+	caffeine boolean not null default false,
+	alcohol boolean not null default false,
+	workout boolean not null default false,
+	llm_text text not null default '',
+	time_bucket_5m bigint not null,
 	created_at timestamptz not null default now()
 );
 
@@ -23,4 +31,21 @@ create index if not exists track_points_user_ts_idx on track_points (user_id, ts
 create unique index if not exists track_points_user_bucket_uniq on track_points (user_id, time_bucket_5m);
 
 alter table track_points
-	add column if not exists time_bucket_5m bigint generated always as (floor(extract(epoch from ts) / 300)) stored;
+	add column if not exists time_bucket_5m bigint not null default 0;
+
+alter table track_points
+	add column if not exists stress double precision not null default 0;
+alter table track_points
+	add column if not exists energy double precision not null default 0;
+alter table track_points
+	add column if not exists concentration double precision not null default 0;
+alter table track_points
+	add column if not exists sleep_quality double precision not null default 0;
+alter table track_points
+	add column if not exists caffeine boolean not null default false;
+alter table track_points
+	add column if not exists alcohol boolean not null default false;
+alter table track_points
+	add column if not exists workout boolean not null default false;
+alter table track_points
+	add column if not exists llm_text text not null default '';

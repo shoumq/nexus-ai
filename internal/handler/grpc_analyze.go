@@ -77,11 +77,19 @@ func mapTrackRequest(in *nexusai.TrackRequest, userID int32) (dto.TrackRequest, 
 			return dto.TrackRequest{}, errors.New("point timestamp is required")
 		}
 		points = append(points, dto.TrackPoint{
-			TS:         p.Ts.AsTime(),
-			SleepHours: p.SleepHours,
-			Mood:       p.Mood,
-			Activity:   p.Activity,
-			Productive: p.Productive,
+			TS:            p.Ts.AsTime(),
+			SleepHours:    p.SleepHours,
+			Mood:          p.Mood,
+			Activity:      p.Activity,
+			Productive:    p.Productive,
+			Stress:        p.Stress,
+			Energy:        p.Energy,
+			Concentration: p.Concentration,
+			SleepQuality:  p.SleepQuality,
+			Caffeine:      p.Caffeine,
+			Alcohol:       p.Alcohol,
+			Workout:       p.Workout,
+			LLMText:       p.LlmText,
 		})
 	}
 
@@ -119,11 +127,6 @@ func mapAnalyzeResponse(in *dto.AnalyzeResponse) (*nexusai.AnalyzeResponse, erro
 		return nil, errors.New("empty response")
 	}
 
-	energyByHour := make(map[int32]float64, len(in.EnergyByHour))
-	for k, v := range in.EnergyByHour {
-		energyByHour[int32(k)] = v
-	}
-
 	energyByWeekday := make(map[string]float64, len(in.EnergyByWeekday))
 	for k, v := range in.EnergyByWeekday {
 		energyByWeekday[k] = v
@@ -155,7 +158,6 @@ func mapAnalyzeResponse(in *dto.AnalyzeResponse) (*nexusai.AnalyzeResponse, erro
 	}
 
 	out := &nexusai.AnalyzeResponse{
-		EnergyByHour:      energyByHour,
 		EnergyByWeekday:   energyByWeekday,
 		ProductivityModel: model,
 		BurnoutRisk:       burnout,
