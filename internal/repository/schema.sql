@@ -7,6 +7,20 @@ create table if not exists analyses (
 
 create index if not exists analyses_created_at_idx on analyses (created_at desc);
 
+create table if not exists user_settings (
+	user_id int primary key,
+	user_tz text not null default 'UTC',
+	updated_at timestamptz not null default now()
+);
+
+create table if not exists last_analyses (
+	user_id int not null,
+	period text not null,
+	response jsonb not null,
+	updated_at timestamptz not null default now(),
+	primary key (user_id, period)
+);
+
 create table if not exists track_points (
 	id bigserial primary key,
 	user_id int not null,
@@ -49,3 +63,9 @@ alter table track_points
 	add column if not exists workout boolean not null default false;
 alter table track_points
 	add column if not exists llm_text text not null default '';
+
+alter table user_settings
+	add column if not exists user_tz text not null default 'UTC';
+
+alter table last_analyses
+	add column if not exists response jsonb not null default '{}'::jsonb;

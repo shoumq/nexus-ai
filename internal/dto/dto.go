@@ -84,35 +84,31 @@ type Win struct {
 	Val   float64
 }
 
-// ====== HF (LLM) prompt/data ======
+// ====== AI (LLM) prompt/data ======
 
-type HFPrompt struct {
+type AIPrompt struct {
 	UserTZ               string
-	EnergyByHour         map[int]float64
 	EnergyByWeekday      map[string]float64
 	ProductivityScore    float64
 	BurnoutScore         float64
 	BurnoutLevel         string
 	BurnoutReasons       []string
-	ProposedSchedule     OptimalSchedule
 	NumPoints            int
-	NumObservedHours     int
 	NumObservedWeekdays  int
-	ObservedHoursList    string
 	ObservedWeekdaysList string
 	UserNotes            string
 }
 
-// ====== HF chat API payloads ======
+// ====== AI chat API payloads ======
 
-type HfChatMessage struct {
+type AIChatMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type HfChatRequest struct {
+type AIChatRequest struct {
 	Model       string          `json:"model"`
-	Messages    []HfChatMessage `json:"messages"`
+	Messages    []AIChatMessage `json:"messages"`
 	MaxTokens   int             `json:"max_tokens,omitempty"`
 	Temperature float64         `json:"temperature,omitempty"`
 	TopP        float64         `json:"top_p,omitempty"`
@@ -122,36 +118,36 @@ type HfChatRequest struct {
 // В твоём коде это было анонимными struct{} внутри Choices.
 // Чтобы "все структуры" были явными — выносим:
 
-type HfChatChoiceMessage struct {
+type AIChatChoiceMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
 }
 
-type HfChatChoice struct {
-	Message      HfChatChoiceMessage `json:"message"`
+type AIChatChoice struct {
+	Message      AIChatChoiceMessage `json:"message"`
 	FinishReason string              `json:"finish_reason"`
 }
 
-type HfChatResponse struct {
-	Choices []HfChatChoice `json:"choices"`
+type AIChatResponse struct {
+	Choices []AIChatChoice `json:"choices"`
 	Error   any            `json:"error,omitempty"`
 }
 
-// Остальные HF типы (сейчас не используются в твоём фрагменте, но у тебя объявлены):
+// Остальные AI типы (сейчас не используются в твоём фрагменте, но у тебя объявлены):
 
-type HfRequest struct {
+type AIRequest struct {
 	Inputs     string         `json:"inputs"`
 	Parameters map[string]any `json:"parameters,omitempty"`
 	Options    map[string]any `json:"options,omitempty"`
 }
 
-type HfTextGenItem struct {
+type AITextGenItem struct {
 	GeneratedText string `json:"generated_text"`
 }
 
 // ====== local helper structs ======
 
-// В build/topKHours у тебя локальный type kv, но это тоже структура.
+// В helper-ах у тебя был локальный type kv, но это тоже структура.
 // Явно вынесем (чтобы "все структуры"):
 
 type Kv struct {

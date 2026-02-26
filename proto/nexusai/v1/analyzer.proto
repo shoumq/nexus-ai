@@ -10,6 +10,8 @@ import "google/protobuf/struct.proto";
 service AnalyzerService {
   rpc Track(TrackRequest) returns (TrackResponse);
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
+  rpc GetTodayTrack(TodayTrackRequest) returns (TodayTrackResponse);
+  rpc GetLastAnalyses(LastAnalysesRequest) returns (LastAnalysesResponse);
 }
 
 message TrackRequest {
@@ -19,6 +21,15 @@ message TrackRequest {
 
 message TrackResponse {
   int32 stored = 1;
+}
+
+message TodayTrackRequest {
+  string user_tz = 1;
+}
+
+message TodayTrackResponse {
+  TrackPoint point = 1;
+  bool exists = 2;
 }
 
 enum Period {
@@ -64,6 +75,18 @@ message AnalyzeResponse {
   OptimalSchedule optimal_schedule = 4;
   string llm_insight = 5;
   google.protobuf.Struct debug = 6;
+}
+
+message LastAnalysesRequest {}
+
+message LastAnalysesResponse {
+  repeated LastAnalysisEntry entries = 1;
+}
+
+message LastAnalysisEntry {
+  string period = 1;
+  AnalyzeResponse response = 2;
+  google.protobuf.Timestamp updated_at = 3;
 }
 
 message ProductivityModel {

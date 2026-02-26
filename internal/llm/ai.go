@@ -14,19 +14,19 @@ import (
 )
 
 const (
-	defaultHFURL   = "https://router.huggingface.co/v1/chat/completions"
-	defaultHFModel = "deepseek-ai/DeepSeek-R1:cheapest"
+	defaultAIURL   = "https://api.deepseek.com/chat/completions"
+	defaultAIModel = "deepseek-chat"
 )
 
-func NewHFClient(cfg HFConfig) *HFClient {
+func NewAIClient(cfg AIConfig) *AIClient {
 	if cfg.URL == "" {
-		cfg.URL = defaultHFURL
+		cfg.URL = defaultAIURL
 	}
 	if cfg.Token == "" {
 		cfg.Token = ""
 	}
 	if cfg.Model == "" {
-		cfg.Model = defaultHFModel
+		cfg.Model = defaultAIModel
 	}
 	if cfg.SystemPrompt == "" {
 		cfg.SystemPrompt = hepler.SystemPromptRU
@@ -35,7 +35,7 @@ func NewHFClient(cfg HFConfig) *HFClient {
 		cfg.HTTPClient = http.DefaultClient
 	}
 
-	return &HFClient{
+	return &AIClient{
 		url:        cfg.URL,
 		token:      cfg.Token,
 		model:      cfg.Model,
@@ -44,10 +44,10 @@ func NewHFClient(cfg HFConfig) *HFClient {
 	}
 }
 
-func (c *HFClient) CallInsight(ctx context.Context, p dto.HFPrompt) (string, error) {
+func (c *AIClient) CallInsight(ctx context.Context, p dto.AIPrompt) (string, error) {
 	userPrompt := hepler.BuildRussianPrompt(p)
 
-	text1, finish1, err := c.hfChatOnce(ctx, c.url, c.token, c.model, c.system, userPrompt, 1200)
+	text1, finish1, err := c.aiChatOnce(ctx, c.url, c.token, c.model, c.system, userPrompt, 1200)
 	if err != nil {
 		return "", err
 	}
@@ -57,7 +57,7 @@ func (c *HFClient) CallInsight(ctx context.Context, p dto.HFPrompt) (string, err
 	if isTruncated(finish1, text1) {
 		contPrompt := fmt.Sprintf(hepler.ContinuePromptTmplRU, text1)
 
-		text2, _, err2 := c.hfChatOnce(ctx, c.url, c.token, c.model, c.system, contPrompt, 900)
+		text2, _, err2 := c.aiChatOnce(ctx, c.url, c.token, c.model, c.system, contPrompt, 900)
 		if err2 == nil {
 			text2 = toPlainText(text2)
 			text2 = sanitizeInsight(text2, p)
@@ -72,17 +72,13 @@ func (c *HFClient) CallInsight(ctx context.Context, p dto.HFPrompt) (string, err
 		rep := fmt.Sprintf(
 			hepler.RepairPromptTmplRU,
 			p.NumPoints,
-			p.NumObservedHours,
 			p.NumObservedWeekdays,
-			p.ObservedHoursList,
 			p.ObservedWeekdaysList,
-			strings.Join(p.ProposedSchedule.BestFocusHours, ", "),
-			strings.Join(p.ProposedSchedule.BestLightTasksHours, ", "),
 			p.BurnoutLevel,
 			text1,
 		)
 
-		fixed, _, err3 := c.hfChatOnce(ctx, c.url, c.token, c.model, c.system, rep, 1200)
+		fixed, _, err3 := c.aiChatOnce(ctx, c.url, c.token, c.model, c.system, rep, 1200)
 		if err3 == nil {
 			fixed = toPlainText(fixed)
 			fixed = sanitizeInsight(fixed, p)
@@ -93,19 +89,19 @@ func (c *HFClient) CallInsight(ctx context.Context, p dto.HFPrompt) (string, err
 	}
 
 	if strings.TrimSpace(text1) == "" {
-		return "", errors.New("hf empty content after cleaning")
+		return "", errors.New("ai empty content after cleaning")
 	}
 	return text1, nil
 }
 
-func (c *HFClient) hfChatOnce(ctx context.Context, url, token, model, system, user string, maxTokens int) (text string, finishReason string, err error) {
+func (c *AIClient) aiChatOnce(ctx context.Context, url, token, model, system, user string, maxTokens int) (text string, finishReason string, err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	reqBody, _ := json.Marshal(dto.HfChatRequest{
+	reqBody, _ := json.Marshal(dto.AIChatRequest{
 		Model: model,
-		Messages: []dto.HfChatMessage{
+		Messages: []dto.AIChatMessage{
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
 		},
@@ -128,15 +124,15 @@ func (c *HFClient) hfChatOnce(ctx context.Context, url, token, model, system, us
 	if resp.StatusCode >= 400 {
 		var b bytes.Buffer
 		_, _ = b.ReadFrom(resp.Body)
-		return "", "", fmt.Errorf("hf status %d: %s", resp.StatusCode, b.String())
+		return "", "", fmt.Errorf("ai status %d: %s", resp.StatusCode, b.String())
 	}
 
-	var out dto.HfChatResponse
+	var out dto.AIChatResponse
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
-		return "", "", fmt.Errorf("hf decode error: %v", err)
+		return "", "", fmt.Errorf("ai decode error: %v", err)
 	}
 	if len(out.Choices) == 0 {
-		return "", "", errors.New("hf empty response (no choices)")
+		return "", "", errors.New("ai empty response (no choices)")
 	}
 
 	t := strings.TrimSpace(out.Choices[0].Message.Content)
@@ -250,7 +246,7 @@ func toPlainText(s string) string {
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
-func sanitizeInsight(text string, p dto.HFPrompt) string {
+func sanitizeInsight(text string, p dto.AIPrompt) string {
 	t := strings.TrimSpace(text)
 
 	bad := []string{
@@ -275,7 +271,7 @@ func sanitizeInsight(text string, p dto.HFPrompt) string {
 	}
 	t = strings.TrimSpace(strings.Join(out, "\n"))
 
-	if p.NumPoints >= 5 && p.NumObservedHours >= 5 && p.NumObservedWeekdays >= 5 {
+	if p.NumPoints >= 5 && p.NumObservedWeekdays >= 5 {
 		t = removeLinesContaining(t, []string{"данных мало", "вывод предварител"})
 	}
 
@@ -318,13 +314,13 @@ func removeLinesContaining(s string, needles []string) string {
 	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
-func validateInsight(text string, p dto.HFPrompt) bool {
+func validateInsight(text string, p dto.AIPrompt) bool {
 	t := strings.TrimSpace(text)
 	if t == "" {
 		return false
 	}
 
-	required := []string{"Энергия", "Выгорание", "Что делать завтра", "Что добавить в трекинг"}
+	required := []string{"Энергия", "Выгорание", "Что делать завтра"}
 	for _, h := range required {
 		if !strings.Contains(t, "\n"+h+"\n") && !strings.HasPrefix(t, h+"\n") {
 			return false
@@ -332,7 +328,7 @@ func validateInsight(text string, p dto.HFPrompt) bool {
 	}
 
 	needUnknown := "Риск выгорания пока неизвестен из-за недостатка данных."
-	if p.BurnoutLevel == "unknown" {
+	if p.BurnoutLevel == "unknown" || p.BurnoutLevel == "недостаточно данных" {
 		if !strings.Contains(t, needUnknown) {
 			return false
 		}
@@ -342,7 +338,7 @@ func validateInsight(text string, p dto.HFPrompt) bool {
 		}
 	}
 
-	if p.NumPoints >= 5 && p.NumObservedHours >= 5 && p.NumObservedWeekdays >= 5 {
+	if p.NumPoints >= 5 && p.NumObservedWeekdays >= 5 {
 		low := strings.ToLower(t)
 		if strings.Contains(low, "данных мало") || strings.Contains(low, "вывод предварител") {
 			return false
@@ -357,7 +353,7 @@ func validateInsight(text string, p dto.HFPrompt) bool {
 		}
 	}
 
-	block := extractBlock(t, "Что делать завтра", "Что добавить в трекинг")
+	block := extractBlock(t, "Что делать завтра", "")
 	if strings.TrimSpace(block) == "" {
 		return false
 	}
@@ -386,6 +382,10 @@ func extractBlock(full, startTitle, endTitle string) string {
 		}
 	} else {
 		start += len("\n" + startTitle + "\n")
+	}
+
+	if strings.TrimSpace(endTitle) == "" {
+		return strings.TrimSpace(full[start:])
 	}
 
 	end := strings.Index(full[start:], "\n"+endTitle+"\n")

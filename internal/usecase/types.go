@@ -7,7 +7,7 @@ import (
 )
 
 type LLMClient interface {
-	CallInsight(ctx context.Context, p dto.HFPrompt) (string, error)
+	CallInsight(ctx context.Context, p dto.AIPrompt) (string, error)
 }
 
 type AnalysisRepository interface {
@@ -16,6 +16,13 @@ type AnalysisRepository interface {
 	SaveAnalysis(ctx context.Context, key string, req dto.AnalyzeRequest, resp dto.AnalyzeResponse) error
 	SaveTrackPoints(ctx context.Context, userID int32, pts []dto.TrackPoint) (int, error)
 	GetTrackPoints(ctx context.Context, userID int32, from, to time.Time) ([]dto.TrackPoint, error)
+	GetTrackPointForDay(ctx context.Context, userID int32, from, to time.Time) (dto.TrackPoint, bool, error)
+	UpsertTrackPointForDay(ctx context.Context, userID int32, p dto.TrackPoint, from, to time.Time) (bool, error)
+	ListUsersWithTrackPoints(ctx context.Context) ([]int32, error)
+	UpsertLastAnalysis(ctx context.Context, userID int32, period string, resp dto.AnalyzeResponse) error
+	GetLastAnalyses(ctx context.Context, userID int32) (map[string]dto.AnalyzeResponse, map[string]time.Time, error)
+	UpsertUserSettings(ctx context.Context, userID int32, userTZ string) error
+	GetUserSettings(ctx context.Context, userID int32) (string, error)
 }
 
 type Analyzer struct {

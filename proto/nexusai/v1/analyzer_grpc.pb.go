@@ -19,8 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	AnalyzerService_Track_FullMethodName   = "/nexusai.v1.AnalyzerService/Track"
-	AnalyzerService_Analyze_FullMethodName = "/nexusai.v1.AnalyzerService/Analyze"
+	AnalyzerService_Track_FullMethodName           = "/nexusai.v1.AnalyzerService/Track"
+	AnalyzerService_Analyze_FullMethodName         = "/nexusai.v1.AnalyzerService/Analyze"
+	AnalyzerService_GetTodayTrack_FullMethodName   = "/nexusai.v1.AnalyzerService/GetTodayTrack"
+	AnalyzerService_GetLastAnalyses_FullMethodName = "/nexusai.v1.AnalyzerService/GetLastAnalyses"
 )
 
 // AnalyzerServiceClient is the client API for AnalyzerService service.
@@ -29,6 +31,8 @@ const (
 type AnalyzerServiceClient interface {
 	Track(ctx context.Context, in *TrackRequest, opts ...grpc.CallOption) (*TrackResponse, error)
 	Analyze(ctx context.Context, in *AnalyzeRequest, opts ...grpc.CallOption) (*AnalyzeResponse, error)
+	GetTodayTrack(ctx context.Context, in *TodayTrackRequest, opts ...grpc.CallOption) (*TodayTrackResponse, error)
+	GetLastAnalyses(ctx context.Context, in *LastAnalysesRequest, opts ...grpc.CallOption) (*LastAnalysesResponse, error)
 }
 
 type analyzerServiceClient struct {
@@ -57,12 +61,32 @@ func (c *analyzerServiceClient) Analyze(ctx context.Context, in *AnalyzeRequest,
 	return out, nil
 }
 
+func (c *analyzerServiceClient) GetTodayTrack(ctx context.Context, in *TodayTrackRequest, opts ...grpc.CallOption) (*TodayTrackResponse, error) {
+	out := new(TodayTrackResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_GetTodayTrack_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerServiceClient) GetLastAnalyses(ctx context.Context, in *LastAnalysesRequest, opts ...grpc.CallOption) (*LastAnalysesResponse, error) {
+	out := new(LastAnalysesResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_GetLastAnalyses_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AnalyzerServiceServer is the server API for AnalyzerService service.
 // All implementations must embed UnimplementedAnalyzerServiceServer
 // for forward compatibility
 type AnalyzerServiceServer interface {
 	Track(context.Context, *TrackRequest) (*TrackResponse, error)
 	Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error)
+	GetTodayTrack(context.Context, *TodayTrackRequest) (*TodayTrackResponse, error)
+	GetLastAnalyses(context.Context, *LastAnalysesRequest) (*LastAnalysesResponse, error)
 	mustEmbedUnimplementedAnalyzerServiceServer()
 }
 
@@ -75,6 +99,12 @@ func (UnimplementedAnalyzerServiceServer) Track(context.Context, *TrackRequest) 
 }
 func (UnimplementedAnalyzerServiceServer) Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Analyze not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) GetTodayTrack(context.Context, *TodayTrackRequest) (*TodayTrackResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetTodayTrack not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) GetLastAnalyses(context.Context, *LastAnalysesRequest) (*LastAnalysesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLastAnalyses not implemented")
 }
 func (UnimplementedAnalyzerServiceServer) mustEmbedUnimplementedAnalyzerServiceServer() {}
 
@@ -125,6 +155,42 @@ func _AnalyzerService_Analyze_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AnalyzerService_GetTodayTrack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TodayTrackRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).GetTodayTrack(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_GetTodayTrack_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).GetTodayTrack(ctx, req.(*TodayTrackRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyzerService_GetLastAnalyses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(LastAnalysesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).GetLastAnalyses(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_GetLastAnalyses_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).GetLastAnalyses(ctx, req.(*LastAnalysesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AnalyzerService_ServiceDesc is the grpc.ServiceDesc for AnalyzerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -139,6 +205,14 @@ var AnalyzerService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Analyze",
 			Handler:    _AnalyzerService_Analyze_Handler,
+		},
+		{
+			MethodName: "GetTodayTrack",
+			Handler:    _AnalyzerService_GetTodayTrack_Handler,
+		},
+		{
+			MethodName: "GetLastAnalyses",
+			Handler:    _AnalyzerService_GetLastAnalyses_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -2,7 +2,7 @@ package llm
 
 import "net/http"
 
-type HFConfig struct {
+type AIConfig struct {
 	URL          string
 	Token        string
 	Model        string
@@ -10,7 +10,7 @@ type HFConfig struct {
 	HTTPClient   *http.Client
 }
 
-type HFClient struct {
+type AIClient struct {
 	url        string
 	token      string
 	model      string

@@ -12,6 +12,7 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type GRPCAnalyzeHandler struct {
@@ -62,6 +63,67 @@ func (h *GRPCAnalyzeHandler) Analyze(ctx context.Context, req *nexusai.AnalyzeRe
 	out, err := mapAnalyzeResponse(resp)
 	if err != nil {
 		return nil, status.Error(codes.Internal, err.Error())
+	}
+	return out, nil
+}
+
+func (h *GRPCAnalyzeHandler) GetTodayTrack(ctx context.Context, req *nexusai.TodayTrackRequest) (*nexusai.TodayTrackResponse, error) {
+	userID, err := h.userIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	userTZ := ""
+	if req != nil {
+		userTZ = req.GetUserTz()
+	}
+	p, ok, err := h.analyzer.GetTodayTrack(ctx, userID, userTZ)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	if !ok {
+		return &nexusai.TodayTrackResponse{Exists: false}, nil
+	}
+	return &nexusai.TodayTrackResponse{
+		Exists: true,
+		Point: &nexusai.TrackPoint{
+			Ts:            timestamppb.New(p.TS),
+			SleepHours:    p.SleepHours,
+			Mood:          p.Mood,
+			Activity:      p.Activity,
+			Productive:    p.Productive,
+			Stress:        p.Stress,
+			Energy:        p.Energy,
+			Concentration: p.Concentration,
+			SleepQuality:  p.SleepQuality,
+			Caffeine:      p.Caffeine,
+			Alcohol:       p.Alcohol,
+			Workout:       p.Workout,
+			LlmText:       p.LLMText,
+		},
+	}, nil
+}
+
+func (h *GRPCAnalyzeHandler) GetLastAnalyses(ctx context.Context, _ *nexusai.LastAnalysesRequest) (*nexusai.LastAnalysesResponse, error) {
+	userID, err := h.userIDFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	m, meta, err := h.analyzer.GetLastAnalyses(ctx, userID)
+	if err != nil {
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+	out := &nexusai.LastAnalysesResponse{}
+	for period, resp := range m {
+		updatedAt := meta[period]
+		pb, err := mapAnalyzeResponse(&resp)
+		if err != nil {
+			return nil, status.Error(codes.Internal, err.Error())
+		}
+		out.Entries = append(out.Entries, &nexusai.LastAnalysisEntry{
+			Period:    period,
+			Response:  pb,
+			UpdatedAt: timestamppb.New(updatedAt),
+		})
 	}
 	return out, nil
 }

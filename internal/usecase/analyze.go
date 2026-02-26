@@ -51,44 +51,36 @@ func (a *Analyzer) Analyze(ctx context.Context, req dto.AnalyzeRequest) (*dto.An
 		pts[i].TS = pts[i].TS.In(loc)
 	}
 
-	energyByHour := analytics.ComputeEnergyByHour(pts)
 	energyByWeekday := analytics.ComputeEnergyByWeekday(pts)
 
-	model := analytics.ComputeProductivityModel(pts, energyByHour, req.Constraints)
+	model := analytics.ComputeProductivityModel(pts)
 
 	var risk dto.BurnoutRisk
-	if len(pts) >= 10 {
+	if len(pts) >= 5 {
 		risk = analytics.ComputeBurnoutRisk(pts, model)
 	} else {
 		risk = dto.BurnoutRisk{
 			Score:                 0,
-			Level:                 "unknown",
-			Reasons:               []string{"Недостаточно данных для прогноза выгорания (нужно хотя бы 10 точек)."},
+			Level:                 "недостаточно данных",
+			Reasons:               []string{"Недостаточно данных для прогноза выгорания (нужно хотя бы 5 точек)."},
 			PredictionHorizonDays: 14,
 		}
 	}
 
-	schedule := analytics.ComputeOptimalSchedule(energyByHour, pts)
-
-	obsHours := analytics.ObservedHoursList(energyByHour)
 	obsDays := analytics.ObservedWeekdaysList(energyByWeekday)
 	userNotes := buildUserNotes(pts, 1200)
 
 	llmText := "LLM disabled"
 	if a.llm != nil {
-		llmText, err = a.llm.CallInsight(ctx, dto.HFPrompt{
+		llmText, err = a.llm.CallInsight(ctx, dto.AIPrompt{
 			UserTZ:               req.UserTZ,
-			EnergyByHour:         energyByHour,
 			EnergyByWeekday:      energyByWeekday,
 			ProductivityScore:    model.Score,
 			BurnoutScore:         risk.Score,
 			BurnoutLevel:         risk.Level,
 			BurnoutReasons:       risk.Reasons,
-			ProposedSchedule:     schedule,
 			NumPoints:            len(pts),
-			NumObservedHours:     len(energyByHour),
 			NumObservedWeekdays:  len(energyByWeekday),
-			ObservedHoursList:    obsHours,
 			ObservedWeekdaysList: obsDays,
 			UserNotes:            userNotes,
 		})
@@ -97,12 +89,23 @@ func (a *Analyzer) Analyze(ctx context.Context, req dto.AnalyzeRequest) (*dto.An
 		}
 	}
 
+	debug := map[string]any{}
+	avgSleep := analytics.AvgSleepDays(pts, 14)
+	if avgSleep > 0 {
+		debug["avg_sleep_hours"] = avgSleep
+	}
+	sleepDelta := analytics.SleepDeltaDays(pts, 7)
+	if sleepDelta != 0 {
+		debug["avg_sleep_delta"] = sleepDelta
+	}
+
 	resp := &dto.AnalyzeResponse{
 		EnergyByWeekday:   energyByWeekday,
 		ProductivityModel: model,
 		BurnoutRisk:       risk,
-		OptimalSchedule:   schedule,
+		OptimalSchedule:   dto.OptimalSchedule{},
 		LLMInsight:        llmText,
+		Debug:             debug,
 	}
 
 	a.storeResult(ctx, cacheKey, req, *resp)
@@ -123,7 +126,88 @@ func (a *Analyzer) Track(ctx context.Context, req dto.TrackRequest) (int, error)
 	if len(req.Points) == 0 {
 		return 0, nil
 	}
-	return a.repo.SaveTrackPoints(ctx, req.UserID, req.Points)
+	loc := time.UTC
+	if req.UserTZ != "" {
+		if l, err := time.LoadLocation(req.UserTZ); err == nil {
+			loc = l
+		}
+	}
+	p := req.Points[0]
+	ts := p.TS.In(loc)
+	start := time.Date(ts.Year(), ts.Month(), ts.Day(), 0, 0, 0, 0, loc)
+	end := start.AddDate(0, 0, 1)
+	updated, err := a.repo.UpsertTrackPointForDay(ctx, req.UserID, p, start.UTC(), end.UTC())
+	if err != nil {
+		return 0, err
+	}
+	_ = a.repo.UpsertUserSettings(ctx, req.UserID, req.UserTZ)
+
+	_ = a.runAnalysesForUser(ctx, req.UserID, req.UserTZ)
+
+	if updated {
+		return 0, nil
+	}
+	return 1, nil
+}
+
+func (a *Analyzer) runAnalysesForUser(ctx context.Context, userID int32, userTZ string) error {
+	if a.repo == nil || userID <= 0 {
+		return nil
+	}
+	if userTZ == "" {
+		userTZ = "UTC"
+	}
+	periods := []dto.Period{dto.PeriodDay, dto.PeriodWeek, dto.PeriodMonth, dto.PeriodAll}
+	c := dto.Constraints{WorkStartHour: 9, WorkEndHour: 18}
+	for _, p := range periods {
+		_, _ = a.Analyze(ctx, dto.AnalyzeRequest{
+			UserID:      userID,
+			UserTZ:      userTZ,
+			WeekStarts:  "monday",
+			Constraints: c,
+			Period:      p,
+		})
+	}
+	return nil
+}
+
+func (a *Analyzer) AnalyzeAllPeriods(ctx context.Context, userID int32, userTZ string) error {
+	return a.runAnalysesForUser(ctx, userID, userTZ)
+}
+
+func (a *Analyzer) GetTodayTrack(ctx context.Context, userID int32, userTZ string) (dto.TrackPoint, bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.repo == nil {
+		return dto.TrackPoint{}, false, errors.New("repository not configured")
+	}
+	if userID <= 0 {
+		return dto.TrackPoint{}, false, errors.New("user id is required")
+	}
+	loc := time.UTC
+	if userTZ != "" {
+		if l, err := time.LoadLocation(userTZ); err == nil {
+			loc = l
+		}
+	}
+	now := time.Now().In(loc)
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+	end := start.AddDate(0, 0, 1)
+	return a.repo.GetTrackPointForDay(ctx, userID, start.UTC(), end.UTC())
+}
+
+func (a *Analyzer) GetLastAnalyses(ctx context.Context, userID int32) (map[string]dto.AnalyzeResponse, map[string]time.Time, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if a.repo == nil {
+		return nil, nil, errors.New("repository not configured")
+	}
+	if userID <= 0 {
+		return nil, nil, errors.New("user id is required")
+	}
+	return a.repo.GetLastAnalyses(ctx, userID)
 }
 
 func buildCacheKey(req dto.AnalyzeRequest) (string, error) {
@@ -144,6 +228,13 @@ func (a *Analyzer) storeResult(ctx context.Context, key string, req dto.AnalyzeR
 	cacheResp.LLMInsight = ""
 	_ = a.repo.CacheResponse(ctx, key, cacheResp, a.cacheTTL)
 	_ = a.repo.SaveAnalysis(ctx, key, req, resp)
+	if req.UserID > 0 {
+		period := string(req.Period)
+		if period == "" {
+			period = "all"
+		}
+		_ = a.repo.UpsertLastAnalysis(ctx, req.UserID, period, resp)
+	}
 }
 
 func periodRange(period dto.Period, now time.Time) (time.Time, time.Time) {

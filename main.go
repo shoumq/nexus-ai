@@ -31,7 +31,7 @@ func main() {
 		grpcAddr = ":9091"
 	}
 
-	hfToken := os.Getenv("HF_TOKEN")
+	dsToken := "sk-c90536d4ff774f2281d8dade3a1acfda"
 	authURL := os.Getenv("AUTH_URL")
 	authGRPCAddr := os.Getenv("AUTH_GRPC_ADDR")
 	if authGRPCAddr == "" {
@@ -39,21 +39,21 @@ func main() {
 	}
 
 	disableLLM := os.Getenv("DISABLE_LLM") == "1" || os.Getenv("DISABLE_LLM") == "true"
-	hfTimeout := 20 * time.Second
-	if v := os.Getenv("HF_TIMEOUT"); v != "" {
+	dsTimeout := 60 * time.Second
+	if v := os.Getenv("DEEPSEEK_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
-			hfTimeout = d
+			dsTimeout = d
 		}
 	}
 
-	var llmClient llm.HFClient
-	if !disableLLM && hfToken != "" {
-		llmClient = *llm.NewHFClient(llm.HFConfig{
-			Token:      hfToken,
-			HTTPClient: &http.Client{Timeout: hfTimeout},
+	var llmClient llm.AIClient
+	if !disableLLM && dsToken != "" {
+		llmClient = *llm.NewAIClient(llm.AIConfig{
+			Token:      dsToken,
+			HTTPClient: &http.Client{Timeout: dsTimeout},
 		})
 	} else {
-		log.Printf("llm disabled: disable=%v token=%v", disableLLM, hfToken != "")
+		log.Printf("llm disabled: disable=%v token=%v", disableLLM, dsToken != "")
 	}
 
 	cacheTTL := 15 * time.Minute
@@ -92,11 +92,14 @@ func main() {
 	}
 
 	var llmPtr usecase.LLMClient
-	if !disableLLM && hfToken != "" {
+	if !disableLLM && dsToken != "" {
 		llmPtr = &llmClient
 	}
 
 	analyzer := usecase.NewAnalyzer(llmPtr, repo, cacheTTL)
+	if repo != nil {
+		startDailyAnalysisScheduler(analyzer, repo)
+	}
 	authConn, err := grpc.Dial(authGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		log.Fatalf("auth grpc dial: %v", err)
@@ -140,4 +143,24 @@ func main() {
 		}
 		grpcServer.GracefulStop()
 	}
+}
+
+func startDailyAnalysisScheduler(analyzer *usecase.Analyzer, repo *repository.Repository) {
+	go func() {
+		for {
+			now := time.Now()
+			next := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+			time.Sleep(time.Until(next))
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			users, err := repo.ListUsersWithTrackPoints(ctx)
+			if err == nil {
+				for _, id := range users {
+					tz, _ := repo.GetUserSettings(ctx, id)
+					_ = analyzer.AnalyzeAllPeriods(ctx, id, tz)
+				}
+			}
+			cancel()
+		}
+	}()
 }

@@ -1,7 +1,6 @@
 package analytics
 
 import (
-	"fmt"
 	"math"
 	"nexus/internal/dto"
 	"sort"
@@ -9,6 +8,8 @@ import (
 	"time"
 )
 
+// ObservedWeekdaysList возвращает отсортированный список ключей (дней) в формате "Mon, Tue".
+// Пример: ObservedWeekdaysList(map[string]float64{"Mon": 1, "Wed": 2}) -> "Mon, Wed".
 func ObservedWeekdaysList(m map[string]float64) string {
 	if len(m) == 0 {
 		return ""
@@ -21,30 +22,8 @@ func ObservedWeekdaysList(m map[string]float64) string {
 	return strings.Join(keys, ", ")
 }
 
-func ComputeEnergyByHour(pts []dto.TrackPoint) map[int]float64 {
-	sum := make(map[int]float64)
-	cnt := make(map[int]float64)
-
-	for _, p := range pts {
-		h := p.TS.Hour()
-		e := energyScore(p)
-		sum[h] += e
-		cnt[h]++
-	}
-
-	out := make(map[int]float64, len(cnt))
-	for h, c := range cnt {
-		if c <= 0 {
-			continue
-		}
-		out[h] = round2(sum[h] / c)
-	}
-
-	out = smoothObservedHours(out, 2)
-
-	return out
-}
-
+// ComputeEnergyByWeekday считает среднюю энергию по дням недели (Mon, Tue и т.д.).
+// Пример: ComputeEnergyByWeekday(points)["Mon"] -> 63.2.
 func ComputeEnergyByWeekday(pts []dto.TrackPoint) map[string]float64 {
 	daySum := map[time.Weekday]float64{}
 	dayCnt := map[time.Weekday]float64{}
@@ -66,7 +45,9 @@ func ComputeEnergyByWeekday(pts []dto.TrackPoint) map[string]float64 {
 	return out
 }
 
-func ComputeProductivityModel(pts []dto.TrackPoint, energyByHour map[int]float64, c dto.Constraints) dto.ProductivityModel {
+// ComputeProductivityModel строит интегральную модель продуктивности по дневным данным.
+// Пример: ComputeProductivityModel(points).Score -> 72.4.
+func ComputeProductivityModel(pts []dto.TrackPoint) dto.ProductivityModel {
 	weights := map[string]float64{
 		"energy_mean":    0.40,
 		"energy_stable":  0.15,
@@ -78,8 +59,8 @@ func ComputeProductivityModel(pts []dto.TrackPoint, energyByHour map[int]float64
 		"self_energy_ok": 0.05,
 	}
 
-	meanEnergy := meanMap(energyByHour)
-	stability := 100 - stdMap(energyByHour)
+	meanEnergy := meanEnergyScore(pts)
+	stability := 100 - stdEnergyScore(pts)
 	sleepOK := percentSleepInRange(pts, 7.0, 9.0)
 	moodOK := percentMoodAbove(pts, 6.5)
 	sleepQualityOK := percentFieldAbove(pts, func(p dto.TrackPoint) float64 { return p.SleepQuality }, 6.5)
@@ -96,17 +77,14 @@ func ComputeProductivityModel(pts []dto.TrackPoint, energyByHour map[int]float64
 		weights["stress_ok"]*stressOK +
 		weights["self_energy_ok"]*selfEnergyOK
 
-	if c.WorkStartHour >= 0 && c.WorkEndHour > c.WorkStartHour {
-		wh := meanHourRange(energyByHour, c.WorkStartHour, c.WorkEndHour)
-		score = 0.7*score + 0.3*wh
-	}
-
 	return dto.ProductivityModel{
 		Weights: weights,
 		Score:   round2(clamp(score, 0, 100)),
 	}
 }
 
+// ComputeBurnoutRisk оценивает риск выгорания по трендам сна/настроения/стресса и модели продуктивности.
+// Пример: ComputeBurnoutRisk(points, model).Level -> "medium".
 func ComputeBurnoutRisk(pts []dto.TrackPoint, model dto.ProductivityModel) dto.BurnoutRisk {
 	reasons := []string{}
 
@@ -179,83 +157,8 @@ func ComputeBurnoutRisk(pts []dto.TrackPoint, model dto.ProductivityModel) dto.B
 	}
 }
 
-func ComputeOptimalSchedule(energyByHour map[int]float64, pts []dto.TrackPoint) dto.OptimalSchedule {
-	wins := make([]dto.Win, 0, len(energyByHour))
-
-	for h := 0; h < 24; h++ {
-		v1, ok1 := energyByHour[h]
-		v2, ok2 := energyByHour[(h+1)%24]
-		if !ok1 || !ok2 {
-			continue // no data for at least one hour, skip window
-		}
-		v := (v1 + v2) / 2
-		wins = append(wins, dto.Win{Start: h, Val: v})
-	}
-
-	sort.Slice(wins, func(i, j int) bool { return wins[i].Val > wins[j].Val })
-
-	best := uniqueWindows(wins, 3, 2)
-	if len(best) == 0 {
-		best = bestSingleHours(energyByHour, 3)
-	}
-	light := uniqueWindows(wins, 2, 2, best...)
-	if len(light) == 0 {
-		light = bestSingleHours(energyByHour, 2)
-	}
-
-	sleepWindow := inferSleepWindow(pts)
-
-	return dto.OptimalSchedule{
-		SuggestedSleepWindow: sleepWindow,
-		BestFocusHours:       best,
-		BestLightTasksHours:  light,
-		RecoveryTips: []string{
-			"Планируй сложные задачи на пики энергии, рутину — на средние окна.",
-			"Если энергия падает после обеда — попробуй прогулку 10–15 минут.",
-			"2–3 раза в неделю делай фокус-блок 60–90 минут без встреч.",
-		},
-	}
-}
-
-func ObservedHoursList(m map[int]float64) string {
-	hs := make([]int, 0, len(m))
-	for h := range m {
-		hs = append(hs, h)
-	}
-	sort.Ints(hs)
-	parts := make([]string, 0, len(hs))
-	for _, h := range hs {
-		parts = append(parts, fmt.Sprintf("%02d:00", h))
-	}
-	return strings.Join(parts, ", ")
-}
-
-func smoothObservedHours(m map[int]float64, radius int) map[int]float64 {
-	if len(m) == 0 {
-		return m
-	}
-	out := make(map[int]float64, len(m))
-	for h := range m {
-		var s float64
-		var c float64
-		for k := -radius; k <= radius; k++ {
-			hh := (h + k + 24) % 24
-			v, ok := m[hh]
-			if !ok {
-				continue
-			}
-			s += v
-			c++
-		}
-		if c == 0 {
-			out[h] = m[h]
-		} else {
-			out[h] = round2(s / c)
-		}
-	}
-	return out
-}
-
+// energyScore рассчитывает итоговый энергетический скор по показателям сна, настроения и активности.
+// Пример: energyScore(point) -> 71.3.
 func energyScore(p dto.TrackPoint) float64 {
 	sleepComponent := 100 * math.Exp(-math.Pow((p.SleepHours-7.75)/2.0, 2))
 	sleepQuality := clamp01(p.SleepQuality/10.0) * 100
@@ -283,87 +186,12 @@ func energyScore(p dto.TrackPoint) float64 {
 	return clamp(e, 0, 100)
 }
 
-func bestSingleHours(energyByHour map[int]float64, k int) []string {
-	arr := make([]dto.Kv, 0, len(energyByHour))
-	for h, v := range energyByHour {
-		arr = append(arr, dto.Kv{K: h, V: v})
-	}
-	sort.Slice(arr, func(i, j int) bool { return arr[i].V > arr[j].V })
-	if len(arr) > k {
-		arr = arr[:k]
-	}
-
-	out := make([]string, 0, len(arr))
-	for _, it := range arr {
-		out = append(out, fmt.Sprintf("%02d:00–%02d:00", it.K, (it.K+1)%24))
-	}
-	return out
-}
-
-func uniqueWindows(wins []dto.Win, n int, length int, avoid ...string) []string {
-	avoidSet := map[string]bool{}
-	for _, a := range avoid {
-		avoidSet[a] = true
-	}
-
-	out := []string{}
-	used := make([]bool, 24)
-
-	mark := func(start int) {
-		for i := 0; i < length; i++ {
-			used[(start+i)%24] = true
-		}
-	}
-
-	for _, w := range wins {
-		label := fmt.Sprintf("%02d:00–%02d:00", w.Start, (w.Start+length)%24)
-		if avoidSet[label] {
-			continue
-		}
-
-		ok := true
-		for i := 0; i < length; i++ {
-			if used[(w.Start+i)%24] {
-				ok = false
-				break
-			}
-		}
-		if !ok {
-			continue
-		}
-
-		out = append(out, label)
-		mark(w.Start)
-
-		if len(out) == n {
-			break
-		}
-	}
-	return out
-}
-
-func inferSleepWindow(pts []dto.TrackPoint) string {
-	avg := avgSleep(pts, 14)
-	wakeHour := 7.5
-	bed := wakeHour - avg
-	for bed < 0 {
-		bed += 24
-	}
-	return fmt.Sprintf("%s–%s", fmtHHMM(bed), fmtHHMM(wakeHour))
-}
-
-func fmtHHMM(h float64) string {
-	hh := int(math.Floor(h)) % 24
-	mm := int(math.Round((h - math.Floor(h)) * 60))
-	if mm == 60 {
-		mm = 0
-		hh = (hh + 1) % 24
-	}
-	return fmt.Sprintf("%02d:%02d", hh, mm)
-}
-
+// clamp01 ограничивает значение диапазоном [0, 1].
+// Пример: clamp01(1.7) -> 1.
 func clamp01(x float64) float64 { return clamp(x, 0, 1) }
 
+// clamp ограничивает значение диапазоном [a, b].
+// Пример: clamp(12, 0, 10) -> 10.
 func clamp(x, a, b float64) float64 {
 	if x < a {
 		return a
@@ -374,38 +202,14 @@ func clamp(x, a, b float64) float64 {
 	return x
 }
 
+// round2 округляет число до 2 знаков после запятой.
+// Пример: round2(1.2345) -> 1.23.
 func round2(x float64) float64 {
 	return math.Round(x*100) / 100
 }
 
-func meanMap(m map[int]float64) float64 {
-	var s float64
-	var c float64
-	for _, v := range m {
-		s += v
-		c++
-	}
-	if c == 0 {
-		return 0
-	}
-	return s / c
-}
-
-func stdMap(m map[int]float64) float64 {
-	mean := meanMap(m)
-	var s float64
-	var c float64
-	for _, v := range m {
-		d := v - mean
-		s += d * d
-		c++
-	}
-	if c == 0 {
-		return 0
-	}
-	return math.Sqrt(s / c)
-}
-
+// percentSleepInRange считает процент дней, где сон в диапазоне [lo, hi].
+// Пример: percentSleepInRange(points, 7, 9) -> 65.
 func percentSleepInRange(pts []dto.TrackPoint, lo, hi float64) float64 {
 	if len(pts) == 0 {
 		return 0
@@ -419,6 +223,8 @@ func percentSleepInRange(pts []dto.TrackPoint, lo, hi float64) float64 {
 	return 100 * ok / float64(len(pts))
 }
 
+// percentMoodAbove считает процент дней, где настроение >= thr.
+// Пример: percentMoodAbove(points, 6.5) -> 52.
 func percentMoodAbove(pts []dto.TrackPoint, thr float64) float64 {
 	if len(pts) == 0 {
 		return 0
@@ -432,6 +238,8 @@ func percentMoodAbove(pts []dto.TrackPoint, thr float64) float64 {
 	return 100 * ok / float64(len(pts))
 }
 
+// percentFieldAbove считает процент дней, где поле f >= thr.
+// Пример: percentFieldAbove(points, func(p) p.Concentration, 6) -> 48.
 func percentFieldAbove(pts []dto.TrackPoint, f func(dto.TrackPoint) float64, thr float64) float64 {
 	if len(pts) == 0 {
 		return 0
@@ -445,6 +253,8 @@ func percentFieldAbove(pts []dto.TrackPoint, f func(dto.TrackPoint) float64, thr
 	return 100 * ok / float64(len(pts))
 }
 
+// percentFieldBelow считает процент дней, где поле f <= thr.
+// Пример: percentFieldBelow(points, func(p) p.Stress, 5.5) -> 40.
 func percentFieldBelow(pts []dto.TrackPoint, f func(dto.TrackPoint) float64, thr float64) float64 {
 	if len(pts) == 0 {
 		return 0
@@ -458,6 +268,8 @@ func percentFieldBelow(pts []dto.TrackPoint, f func(dto.TrackPoint) float64, thr
 	return 100 * ok / float64(len(pts))
 }
 
+// percentBool считает процент дней, где булево условие истинно.
+// Пример: percentBool(points, func(p) p.Workout) -> 25.
 func percentBool(pts []dto.TrackPoint, f func(dto.TrackPoint) bool) float64 {
 	if len(pts) == 0 {
 		return 0
@@ -471,6 +283,8 @@ func percentBool(pts []dto.TrackPoint, f func(dto.TrackPoint) bool) float64 {
 	return 100 * ok / float64(len(pts))
 }
 
+// avgSleep считает среднее количество сна за последние days дней.
+// Пример: avgSleep(points, 14) -> 6.9.
 func avgSleep(pts []dto.TrackPoint, days int) float64 {
 	cut := pts[len(pts)-1].TS.AddDate(0, 0, -days)
 	var s float64
@@ -487,6 +301,51 @@ func avgSleep(pts []dto.TrackPoint, days int) float64 {
 	return s / c
 }
 
+// AvgSleepDays возвращает среднее количество сна за последние days дней.
+// Пример: AvgSleepDays(points, 14) -> 6.9.
+func AvgSleepDays(pts []dto.TrackPoint, days int) float64 {
+	if len(pts) == 0 || days <= 0 {
+		return 0
+	}
+	return avgSleep(pts, days)
+}
+
+// SleepDeltaDays считает разницу среднего сна: последние days дней минус предыдущие days дней.
+// Пример: SleepDeltaDays(points, 7) -> -0.4.
+func SleepDeltaDays(pts []dto.TrackPoint, days int) float64 {
+	if len(pts) == 0 || days <= 0 {
+		return 0
+	}
+	end := pts[len(pts)-1].TS
+	curFrom := end.AddDate(0, 0, -days)
+	prevFrom := end.AddDate(0, 0, -2*days)
+	prevTo := curFrom
+
+	cur := avgSleepBetween(pts, curFrom, end)
+	prev := avgSleepBetween(pts, prevFrom, prevTo)
+	if cur == 0 || prev == 0 {
+		return 0
+	}
+	return cur - prev
+}
+
+func avgSleepBetween(pts []dto.TrackPoint, from, to time.Time) float64 {
+	var s float64
+	var c float64
+	for _, p := range pts {
+		if p.TS.After(from) && !p.TS.After(to) {
+			s += p.SleepHours
+			c++
+		}
+	}
+	if c == 0 {
+		return 0
+	}
+	return s / c
+}
+
+// moodTrend оценивает тренд настроения (средняя разница половин периода).
+// Пример: moodTrend(points, 14) -> -0.2.
 func moodTrend(pts []dto.TrackPoint, days int) float64 {
 	cut := pts[len(pts)-1].TS.AddDate(0, 0, -days)
 	var arr []dto.TrackPoint
@@ -504,6 +363,8 @@ func moodTrend(pts []dto.TrackPoint, days int) float64 {
 	return (last - first) / float64(days)
 }
 
+// avgMood считает среднее настроение.
+// Пример: avgMood(points) -> 6.7.
 func avgMood(pts []dto.TrackPoint) float64 {
 	var s float64
 	for _, p := range pts {
@@ -515,6 +376,8 @@ func avgMood(pts []dto.TrackPoint) float64 {
 	return s / float64(len(pts))
 }
 
+// avgField считает среднее значение произвольного поля.
+// Пример: avgField(points, func(p) p.Stress) -> 5.8.
 func avgField(pts []dto.TrackPoint, f func(dto.TrackPoint) float64) float64 {
 	if len(pts) == 0 {
 		return 0
@@ -526,6 +389,36 @@ func avgField(pts []dto.TrackPoint, f func(dto.TrackPoint) float64) float64 {
 	return s / float64(len(pts))
 }
 
+// meanEnergyScore считает среднюю энергию по energyScore для всех точек.
+// Пример: meanEnergyScore(points) -> 67.3.
+func meanEnergyScore(pts []dto.TrackPoint) float64 {
+	if len(pts) == 0 {
+		return 0
+	}
+	var s float64
+	for _, p := range pts {
+		s += energyScore(p)
+	}
+	return s / float64(len(pts))
+}
+
+// stdEnergyScore считает стандартное отклонение energyScore для всех точек.
+// Пример: stdEnergyScore(points) -> 9.4.
+func stdEnergyScore(pts []dto.TrackPoint) float64 {
+	if len(pts) == 0 {
+		return 0
+	}
+	mean := meanEnergyScore(pts)
+	var s float64
+	for _, p := range pts {
+		d := energyScore(p) - mean
+		s += d * d
+	}
+	return math.Sqrt(s / float64(len(pts)))
+}
+
+// energyVolatility оценивает волатильность энергии за последние days дней.
+// Пример: energyVolatility(points, 14) -> 12.4.
 func energyVolatility(pts []dto.TrackPoint, days int) float64 {
 	cut := pts[len(pts)-1].TS.AddDate(0, 0, -days)
 	var vals []float64
@@ -548,26 +441,4 @@ func energyVolatility(pts []dto.TrackPoint, days int) float64 {
 		s += d * d
 	}
 	return math.Sqrt(s / float64(len(vals)))
-}
-
-func meanHourRange(m map[int]float64, start, end int) float64 {
-	if start < 0 {
-		start = 0
-	}
-	if end > 24 {
-		end = 24
-	}
-	if end <= start {
-		return meanMap(m)
-	}
-	var s float64
-	var c float64
-	for h := start; h < end; h++ {
-		s += m[h]
-		c++
-	}
-	if c == 0 {
-		return 0
-	}
-	return s / c
 }
