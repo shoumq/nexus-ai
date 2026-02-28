@@ -12,6 +12,15 @@ service AnalyzerService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse);
   rpc GetTodayTrack(TodayTrackRequest) returns (TodayTrackResponse);
   rpc GetLastAnalyses(LastAnalysesRequest) returns (LastAnalysesResponse);
+  rpc GetMyProfile(GetMyProfileRequest) returns (GetMyProfileResponse);
+  rpc UpdateMyProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  rpc GetUserProfile(GetUserProfileRequest) returns (GetUserProfileResponse);
+  rpc GetUserLastAnalyses(GetUserLastAnalysesRequest) returns (LastAnalysesResponse);
+  rpc SearchUsers(SearchUsersRequest) returns (SearchUsersResponse);
+  rpc ListFriends(ListFriendsRequest) returns (ListFriendsResponse);
+  rpc ListFriendRequests(ListFriendRequestsRequest) returns (ListFriendRequestsResponse);
+  rpc SendFriendRequest(SendFriendRequestRequest) returns (SendFriendRequestResponse);
+  rpc RespondFriendRequest(RespondFriendRequestRequest) returns (RespondFriendRequestResponse);
 }
 
 message TrackRequest {
@@ -50,6 +59,8 @@ message AnalyzeRequest {
 message TrackPoint {
   google.protobuf.Timestamp ts = 1;
   double sleep_hours = 2;
+  string sleep_start = 14;
+  string sleep_end = 15;
   double mood = 3;
   double activity = 4;
   double productive = 5;
@@ -61,7 +72,57 @@ message TrackPoint {
   bool alcohol = 11;
   bool workout = 12;
   string llm_text = 13;
+  string analysis_status = 16;
 }
+
+message UserProfile {
+  int32 user_id = 1;
+  string name = 2;
+  string email = 3;
+  string emoji = 4;
+  int32 bg_index = 5;
+  bool is_friend = 6;
+}
+
+message FriendRequest {
+  int64 id = 1;
+  UserProfile from = 2;
+  UserProfile to = 3;
+  string status = 4;
+  google.protobuf.Timestamp created_at = 5;
+}
+
+message GetMyProfileRequest {}
+message GetMyProfileResponse { UserProfile profile = 1; }
+
+message GetUserProfileRequest { int32 user_id = 1; }
+message GetUserProfileResponse { UserProfile profile = 1; }
+
+message GetUserLastAnalysesRequest { int32 user_id = 1; }
+
+message UpdateProfileRequest {
+  string emoji = 1;
+  int32 bg_index = 2;
+}
+message UpdateProfileResponse { UserProfile profile = 1; }
+
+message SearchUsersRequest { string query = 1; }
+message SearchUsersResponse { repeated UserProfile users = 1; }
+
+message ListFriendsRequest {}
+message ListFriendsResponse { repeated UserProfile friends = 1; }
+
+message ListFriendRequestsRequest { string status = 1; }
+message ListFriendRequestsResponse { repeated FriendRequest requests = 1; }
+
+message SendFriendRequestRequest { int32 to_user_id = 1; }
+message SendFriendRequestResponse { FriendRequest request = 1; }
+
+message RespondFriendRequestRequest {
+  int64 request_id = 1;
+  string action = 2; // accept | decline
+}
+message RespondFriendRequestResponse { bool ok = 1; }
 
 message Constraints {
   int32 work_start_hour = 1;

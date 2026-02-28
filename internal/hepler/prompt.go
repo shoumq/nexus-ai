@@ -45,6 +45,43 @@ const SystemPromptRU = `Ты — строгий аналитик данных о
 - в "Что делать завтра" ровно 3 действия
 - если burnout_level unknown/недостаточно данных — обязательная фраза есть дословно`
 
+const SystemPromptRUPeriod = `Ты — строгий аналитик данных о привычках, энергии, продуктивности и риске выгорания. Твоя задача — написать подробный практичный разбор на русском языке, используя ТОЛЬКО факты из входных данных. Обращайся к человеку на "ты" (не используй "пользователь", пиши "у тебя", "ты").
+
+КРИТИЧНЫЕ ПРАВИЛА
+1) Выводи ТОЛЬКО чистый текст. Никакого Markdown: не используй **, __, *, _, ` + "`" + `, #, списки с '-' или '•', и нумерацию '1.'.
+2) Запрещены служебные блоки и размышления: не используй '<think>', '</think>', 'analysis', 'thoughts'.
+3) Используй только факты из входных агрегатов. Не придумывай тренды или циклы, если num_points < 5 ИЛИ num_observed_days < 5. В этом случае можно только перечислить наблюдаемые значения и сказать, что данных мало.
+4) Разрешено использовать user_notes как контекст. Можно делать аккуратные причинные выводы, если они явно указаны в заметках пользователя. Не придумывай новые причины.
+5) Если user_notes не пустой — ОБЯЗАТЕЛЬНО упомяни заметки в одном предложении с префиксом "Заметки:" в блоке "Энергия" или "Выгорание". Не искажай текст заметок.
+6) Не делай медицинских заявлений и диагнозов. Формулировки должны быть осторожные: "может снижать", "могло повлиять", "вероятно связано с".
+7) Запрещено делать выводы про периоды, по которым нет наблюдений.
+8) Запрещено называть значение 'низким', если оно > 60/100. Разрешённые формулировки: 'высокий', 'умеренный', 'ниже, чем', 'чуть ниже'.
+9) Если burnout_level = 'unknown' ИЛИ 'недостаточно данных', ты ОБЯЗАН вставить дословно фразу:
+'Риск выгорания пока неизвестен из-за недостатка данных.'
+И ты НЕ имеешь права называть риск низким/средним/высоким или добавлять оценки/проценты риска.
+10) Не противоречь входным цифрам.
+
+ФОРМАТ ОТВЕТА (СТРОГО)
+Ответ состоит ровно из 3 блоков в указанном порядке. Каждый блок начинается с отдельной строки-заголовка БЕЗ двоеточия:
+Энергия
+Выгорание
+Что делать завтра
+
+После заголовка блока — 4–7 коротких предложений, НО в блоке "Выгорание" — 6–9 предложений. Между блоками — одна пустая строка.
+
+СОДЕРЖАНИЕ БЛОКОВ
+Энергия: краткий обзор по периоду, опираясь на средние и диапазоны (min/max). Укажи период словами.
+Выгорание: главный блок. Если unknown/недостаточно данных — обязательная фраза; иначе уровень (low/medium/high) + 2–3 причины из reasons. Добавь интерпретацию, как это может отражаться на самочувствии, без медицинских диагнозов.
+Также ОБЯЗАТЕЛЬНО упомяни сон и стресс:
+- Сон: avg_sleep_start и avg_sleep_end (если заданы).
+- Стресс: avg_stress и min/max стресс.
+Что делать завтра: ровно 3 конкретных действия, привязанных к наблюдаемым фактам (средние/диапазоны/причины выгорания/заметки).
+
+ПРОВЕРКА ПЕРЕД ОТВЕТОМ (СДЕЛАЙ МОЛЧА)
+- 3 блока есть
+- в "Что делать завтра" ровно 3 действия
+- если burnout_level unknown/недостаточно данных — обязательная фраза есть дословно`
+
 const ContinuePromptTmplRU = `Продолжи ответ с места, где оборвалось. Не повторяй уже написанное.
 Выведи только продолжение чистым текстом на русском.
 Соблюдай все правила из system prompt, включая формат 3 блоков.
@@ -70,7 +107,87 @@ burnout_level=%s
 ИСПРАВЛЯЕМЫЙ ТЕКСТ:
 %s`
 
+const RepairPromptTmplRUPeriod = `Исправь ответ так, чтобы он строго соответствовал правилам system prompt для периода и строго формату 3 блоков.
+Не добавляй новых фактов.
+Требования:
+- 3 блока с заголовками ровно: Энергия / Выгорание / Что делать завтра
+- В каждом блоке 4–7 коротких предложений, но в "Выгорание" — 6–9
+- В блоке "Что делать завтра" ровно 3 действия (3 отдельных предложения)
+- Если num_points >= 5 И num_observed_days >= 5 — нельзя писать "Данных мало" и "вывод предварительный"
+- Если burnout_level = unknown ИЛИ "недостаточно данных" — обязательно дословно: "Риск выгорания пока неизвестен из-за недостатка данных."
+Верни ПОЛНЫЙ исправленный текст целиком (не продолжение).
+
+ВХОДНЫЕ АГРЕГАТЫ:
+num_points=%d
+num_observed_days=%d
+burnout_level=%s
+
+ИСПРАВЛЯЕМЫЙ ТЕКСТ:
+%s`
+
 func BuildRussianPrompt(p dto.AIPrompt) string {
+	if p.Period == dto.PeriodMonth || p.Period == dto.PeriodAll {
+		notesBlock := ""
+		if strings.TrimSpace(p.UserNotes) != "" {
+			notesBlock = "user_notes=" + p.UserNotes + ""
+		}
+		periodLabel := periodLabelRU(p.Period)
+		start := p.PeriodStart.Format("2006-01-02")
+		end := p.PeriodEnd.Format("2006-01-02")
+		return fmt.Sprintf(
+			`Агрегированные метрики за период. Важно: отсутствие данных НЕ означает низкие значения.
+
+period=%s
+period_start=%s
+period_end=%s
+num_points=%d
+num_observed_days=%d
+avg_sleep_start=%s
+avg_sleep_end=%s
+avg_sleep_quality=%.2f
+avg_mood=%.2f
+avg_activity=%.2f
+avg_productive=%.2f
+avg_stress=%.2f
+avg_energy=%.2f
+avg_concentration=%.2f
+min_energy=%.2f
+max_energy=%.2f
+min_stress=%.2f
+max_stress=%.2f
+%s
+productivity_score=%.2f
+burnout_score=%.2f
+burnout_level=%s
+burnout_reasons=%s
+
+Сделай ответ строго по правилам system prompt для периода и строго в формате 3 блоков.`,
+			periodLabel,
+			start,
+			end,
+			p.NumPoints,
+			p.NumObservedDays,
+			p.AvgSleepStart,
+			p.AvgSleepEnd,
+			p.AvgSleepQuality,
+			p.AvgMood,
+			p.AvgActivity,
+			p.AvgProductive,
+			p.AvgStress,
+			p.AvgEnergy,
+			p.AvgConcentration,
+			p.MinEnergy,
+			p.MaxEnergy,
+			p.MinStress,
+			p.MaxStress,
+			notesBlock,
+			p.ProductivityScore,
+			p.BurnoutScore,
+			p.BurnoutLevel,
+			strings.Join(p.BurnoutReasons, "; "),
+		)
+	}
+
 	topDays := topKWeekdays(p.EnergyByWeekday, 2, true)
 	botDays := topKWeekdays(p.EnergyByWeekday, 2, false)
 
@@ -78,7 +195,7 @@ func BuildRussianPrompt(p dto.AIPrompt) string {
 
 	notesBlock := ""
 	if strings.TrimSpace(p.UserNotes) != "" {
-		notesBlock = "\nuser_notes=\n" + p.UserNotes + "\n"
+		notesBlock = "user_notes=" + p.UserNotes + ""
 	}
 
 	return fmt.Sprintf(
@@ -98,7 +215,7 @@ burnout_reasons=%s
 
 Сделай ответ строго по правилам system prompt и строго в формате 3 блоков.`,
 		p.NumPoints,
-		p.NumObservedWeekdays,
+		p.NumObservedDays,
 		p.ObservedWeekdaysList,
 		string(energyByWeekdayJSON),
 		strings.Join(topDays, ", "),
@@ -110,6 +227,21 @@ burnout_reasons=%s
 		p.BurnoutLevel,
 		strings.Join(p.BurnoutReasons, "; "),
 	)
+}
+
+func periodLabelRU(p dto.Period) string {
+	switch p {
+	case dto.PeriodDay:
+		return "день"
+	case dto.PeriodWeek:
+		return "неделя"
+	case dto.PeriodMonth:
+		return "месяц"
+	case dto.PeriodAll, dto.PeriodUnspecified:
+		return "всё время"
+	default:
+		return "период"
+	}
 }
 
 func topKWeekdays(m map[string]float64, k int, desc bool) []string {

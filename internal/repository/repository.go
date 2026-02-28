@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"nexus/internal/dto"
@@ -127,13 +128,13 @@ func (r *Repository) SaveTrackPoints(ctx context.Context, userID int32, pts []dt
 		bucket := p.TS.Unix() / 300
 		batch.Queue(`
 			insert into track_points (
-				user_id, ts, sleep_hours, mood, activity, productive,
+				user_id, ts, sleep_hours, sleep_start, sleep_end, mood, activity, productive,
 				stress, energy, concentration, sleep_quality,
 				caffeine, alcohol, workout, llm_text, time_bucket_5m
 			)
-			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+			values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
 			on conflict (user_id, time_bucket_5m) do nothing
-		`, userID, p.TS, p.SleepHours, p.Mood, p.Activity, p.Productive,
+		`, userID, p.TS, p.SleepHours, p.SleepStart, p.SleepEnd, p.Mood, p.Activity, p.Productive,
 			p.Stress, p.Energy, p.Concentration, p.SleepQuality,
 			p.Caffeine, p.Alcohol, p.Workout, p.LLMText, bucket)
 	}
@@ -161,9 +162,9 @@ func (r *Repository) GetTrackPoints(ctx context.Context, userID int32, from, to 
 	}
 
 	rows, err := r.pg.Query(ctx, `
-		select ts, sleep_hours, mood, activity, productive,
+		select ts, sleep_hours, sleep_start, sleep_end, mood, activity, productive,
 		       stress, energy, concentration, sleep_quality,
-		       caffeine, alcohol, workout, llm_text
+		       caffeine, alcohol, workout, llm_text, analysis_status
 		from track_points
 		where user_id = $1 and ts >= $2 and ts <= $3
 		order by ts asc
@@ -177,9 +178,9 @@ func (r *Repository) GetTrackPoints(ctx context.Context, userID int32, from, to 
 	for rows.Next() {
 		var p dto.TrackPoint
 		if err := rows.Scan(
-			&p.TS, &p.SleepHours, &p.Mood, &p.Activity, &p.Productive,
+			&p.TS, &p.SleepHours, &p.SleepStart, &p.SleepEnd, &p.Mood, &p.Activity, &p.Productive,
 			&p.Stress, &p.Energy, &p.Concentration, &p.SleepQuality,
-			&p.Caffeine, &p.Alcohol, &p.Workout, &p.LLMText,
+			&p.Caffeine, &p.Alcohol, &p.Workout, &p.LLMText, &p.AnalysisStatus,
 		); err != nil {
 			return nil, err
 		}
@@ -200,17 +201,17 @@ func (r *Repository) GetTrackPointForDay(ctx context.Context, userID int32, from
 	}
 	var p dto.TrackPoint
 	err := r.pg.QueryRow(ctx, `
-		select ts, sleep_hours, mood, activity, productive,
+		select ts, sleep_hours, sleep_start, sleep_end, mood, activity, productive,
 		       stress, energy, concentration, sleep_quality,
-		       caffeine, alcohol, workout, llm_text
+		       caffeine, alcohol, workout, llm_text, analysis_status
 		from track_points
 		where user_id = $1 and ts >= $2 and ts < $3
 		order by ts desc
 		limit 1
 	`, userID, from, to).Scan(
-		&p.TS, &p.SleepHours, &p.Mood, &p.Activity, &p.Productive,
+		&p.TS, &p.SleepHours, &p.SleepStart, &p.SleepEnd, &p.Mood, &p.Activity, &p.Productive,
 		&p.Stress, &p.Energy, &p.Concentration, &p.SleepQuality,
-		&p.Caffeine, &p.Alcohol, &p.Workout, &p.LLMText,
+		&p.Caffeine, &p.Alcohol, &p.Workout, &p.LLMText, &p.AnalysisStatus,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -241,20 +242,25 @@ func (r *Repository) UpsertTrackPointForDay(ctx context.Context, userID int32, p
 			update track_points
 			set ts = $2,
 			    sleep_hours = $3,
-			    mood = $4,
-			    activity = $5,
-			    productive = $6,
-			    stress = $7,
-			    energy = $8,
-			    concentration = $9,
-			    sleep_quality = $10,
-			    caffeine = $11,
-			    alcohol = $12,
-			    workout = $13,
-			    llm_text = $14,
-			    time_bucket_5m = $15
+			    sleep_start = $4,
+			    sleep_end = $5,
+			    mood = $6,
+			    activity = $7,
+			    productive = $8,
+			    stress = $9,
+			    energy = $10,
+			    concentration = $11,
+			    sleep_quality = $12,
+			    caffeine = $13,
+			    alcohol = $14,
+			    workout = $15,
+			    llm_text = $16,
+			    time_bucket_5m = $17,
+			    analysis_status = 'pending',
+			    analysis_updated_at = now(),
+			    analysis_error = ''
 			where id = $1
-		`, id, p.TS, p.SleepHours, p.Mood, p.Activity, p.Productive,
+		`, id, p.TS, p.SleepHours, p.SleepStart, p.SleepEnd, p.Mood, p.Activity, p.Productive,
 			p.Stress, p.Energy, p.Concentration, p.SleepQuality,
 			p.Caffeine, p.Alcohol, p.Workout, p.LLMText, bucket)
 		if err != nil {
@@ -267,12 +273,13 @@ func (r *Repository) UpsertTrackPointForDay(ctx context.Context, userID int32, p
 	}
 	_, err = r.pg.Exec(ctx, `
 		insert into track_points (
-			user_id, ts, sleep_hours, mood, activity, productive,
+			user_id, ts, sleep_hours, sleep_start, sleep_end, mood, activity, productive,
 			stress, energy, concentration, sleep_quality,
-			caffeine, alcohol, workout, llm_text, time_bucket_5m
+			caffeine, alcohol, workout, llm_text, time_bucket_5m,
+			analysis_status, analysis_updated_at, analysis_error
 		)
-		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-	`, userID, p.TS, p.SleepHours, p.Mood, p.Activity, p.Productive,
+		values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'pending', now(), '')
+	`, userID, p.TS, p.SleepHours, p.SleepStart, p.SleepEnd, p.Mood, p.Activity, p.Productive,
 		p.Stress, p.Energy, p.Concentration, p.SleepQuality,
 		p.Caffeine, p.Alcohol, p.Workout, p.LLMText, bucket)
 	if err != nil {
@@ -302,6 +309,321 @@ func (r *Repository) ListUsersWithTrackPoints(ctx context.Context) ([]int32, err
 		return nil, err
 	}
 	return out, nil
+}
+
+func (r *Repository) SetAnalysisStatusForDay(ctx context.Context, userID int32, from, to time.Time, status, errText string) error {
+	if r.pg == nil {
+		return errors.New("repository: postgres not configured")
+	}
+	if userID <= 0 {
+		return errors.New("repository: invalid user id")
+	}
+	if status == "" {
+		return errors.New("repository: status is required")
+	}
+	_, err := r.pg.Exec(ctx, `
+		update track_points
+		set analysis_status = $1,
+		    analysis_updated_at = now(),
+		    analysis_error = $2
+		where user_id = $3 and ts >= $4 and ts < $5
+	`, status, errText, userID, from, to)
+	return err
+}
+
+func (r *Repository) GetUserProfile(ctx context.Context, userID int32) (dto.UserProfile, error) {
+	if r.pg == nil {
+		return dto.UserProfile{}, errors.New("repository: postgres not configured")
+	}
+	if userID <= 0 {
+		return dto.UserProfile{}, errors.New("repository: invalid user id")
+	}
+	var p dto.UserProfile
+	err := r.pg.QueryRow(ctx, `
+		select u.id, u.name, u.email,
+		       coalesce(s.avatar_emoji, '') as emoji,
+		       coalesce(s.avatar_bg, 0) as bg
+		from users u
+		left join user_settings s on s.user_id = u.id
+		where u.id = $1
+	`, userID).Scan(&p.UserID, &p.Name, &p.Email, &p.Emoji, &p.BgIndex)
+	if err != nil {
+		return dto.UserProfile{}, err
+	}
+	return p, nil
+}
+
+func (r *Repository) UpdateUserProfile(ctx context.Context, userID int32, emoji string, bgIndex int32) (dto.UserProfile, error) {
+	if r.pg == nil {
+		return dto.UserProfile{}, errors.New("repository: postgres not configured")
+	}
+	if userID <= 0 {
+		return dto.UserProfile{}, errors.New("repository: invalid user id")
+	}
+	_, err := r.pg.Exec(ctx, `
+		insert into user_settings (user_id, avatar_emoji, avatar_bg, updated_at)
+		values ($1, $2, $3, now())
+		on conflict (user_id) do update
+		set avatar_emoji = excluded.avatar_emoji,
+		    avatar_bg = excluded.avatar_bg,
+		    updated_at = excluded.updated_at
+	`, userID, emoji, bgIndex)
+	if err != nil {
+		return dto.UserProfile{}, err
+	}
+	return r.GetUserProfile(ctx, userID)
+}
+
+func (r *Repository) GetUserProfileForViewer(ctx context.Context, viewerID, targetID int32) (dto.UserProfile, error) {
+	if r.pg == nil {
+		return dto.UserProfile{}, errors.New("repository: postgres not configured")
+	}
+	if viewerID <= 0 || targetID <= 0 {
+		return dto.UserProfile{}, errors.New("repository: invalid user id")
+	}
+	if viewerID == targetID {
+		return r.GetUserProfile(ctx, targetID)
+	}
+	var isFriend bool
+	err := r.pg.QueryRow(ctx, `
+		select exists (
+		  select 1 from friends f
+		  where f.user_id = $1 and f.friend_id = $2
+		)
+	`, viewerID, targetID).Scan(&isFriend)
+	if err != nil {
+		return dto.UserProfile{}, err
+	}
+	if !isFriend {
+		return dto.UserProfile{}, errors.New("forbidden")
+	}
+	p, err := r.GetUserProfile(ctx, targetID)
+	if err != nil {
+		return dto.UserProfile{}, err
+	}
+	p.IsFriend = true
+	return p, nil
+}
+
+func (r *Repository) SearchUsers(ctx context.Context, query string, excludeUserID int32, limit int) ([]dto.UserProfile, error) {
+	if r.pg == nil {
+		return nil, errors.New("repository: postgres not configured")
+	}
+	if limit <= 0 || limit > 50 {
+		limit = 20
+	}
+	q := "%" + query + "%"
+	rows, err := r.pg.Query(ctx, `
+		select u.id, u.name, u.email,
+		       coalesce(s.avatar_emoji, '') as emoji,
+		       coalesce(s.avatar_bg, 0) as bg,
+		       exists (
+		         select 1 from friends f
+		         where f.user_id = $1 and f.friend_id = u.id
+		       ) as is_friend
+		from users u
+		left join user_settings s on s.user_id = u.id
+		where u.id <> $1
+		  and (u.name ilike $2 or u.email ilike $2)
+		order by u.name asc
+		limit $3
+	`, excludeUserID, q, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []dto.UserProfile
+	for rows.Next() {
+		var p dto.UserProfile
+		if err := rows.Scan(&p.UserID, &p.Name, &p.Email, &p.Emoji, &p.BgIndex, &p.IsFriend); err != nil {
+			return nil, err
+		}
+		if !p.IsFriend {
+			p.Email = ""
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) ListFriends(ctx context.Context, userID int32) ([]dto.UserProfile, error) {
+	if r.pg == nil {
+		return nil, errors.New("repository: postgres not configured")
+	}
+	rows, err := r.pg.Query(ctx, `
+		select u.id, u.name, u.email,
+		       coalesce(s.avatar_emoji, '') as emoji,
+		       coalesce(s.avatar_bg, 0) as bg
+		from friends f
+		join users u on u.id = f.friend_id
+		left join user_settings s on s.user_id = u.id
+		where f.user_id = $1
+		order by u.name asc
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []dto.UserProfile
+	for rows.Next() {
+		var p dto.UserProfile
+		if err := rows.Scan(&p.UserID, &p.Name, &p.Email, &p.Emoji, &p.BgIndex); err != nil {
+			return nil, err
+		}
+		p.IsFriend = true
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) CreateFriendRequest(ctx context.Context, fromUserID, toUserID int32) (dto.FriendRequest, error) {
+	if r.pg == nil {
+		return dto.FriendRequest{}, errors.New("repository: postgres not configured")
+	}
+	if fromUserID <= 0 || toUserID <= 0 || fromUserID == toUserID {
+		return dto.FriendRequest{}, errors.New("repository: invalid user id")
+	}
+
+	tx, err := r.pg.Begin(ctx)
+	if err != nil {
+		return dto.FriendRequest{}, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// already friends?
+	var exists int
+	if err := tx.QueryRow(ctx, `
+		select 1 from friends where user_id=$1 and friend_id=$2
+	`, fromUserID, toUserID).Scan(&exists); err == nil {
+		return dto.FriendRequest{}, errors.New("already friends")
+	}
+
+	var id int64
+	err = tx.QueryRow(ctx, `
+		insert into friend_requests (from_user_id, to_user_id, status)
+		values ($1, $2, 'pending')
+		on conflict (from_user_id, to_user_id) do update
+		set status = 'pending', created_at = now()
+		returning id
+	`, fromUserID, toUserID).Scan(&id)
+	if err != nil {
+		return dto.FriendRequest{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return dto.FriendRequest{}, err
+	}
+
+	reqs, err := r.ListFriendRequests(ctx, toUserID, "pending")
+	if err != nil {
+		return dto.FriendRequest{}, err
+	}
+	for _, fr := range reqs {
+		if fr.ID == id {
+			return fr, nil
+		}
+	}
+	return dto.FriendRequest{ID: id, Status: "pending"}, nil
+}
+
+func (r *Repository) ListFriendRequests(ctx context.Context, userID int32, status string) ([]dto.FriendRequest, error) {
+	if r.pg == nil {
+		return nil, errors.New("repository: postgres not configured")
+	}
+	if status == "" {
+		status = "pending"
+	}
+	rows, err := r.pg.Query(ctx, `
+		select fr.id, fr.status, fr.created_at,
+		       u1.id, u1.name, u1.email, coalesce(s1.avatar_emoji, '🙂'), coalesce(s1.avatar_bg, 0),
+		       u2.id, u2.name, u2.email, coalesce(s2.avatar_emoji, '🙂'), coalesce(s2.avatar_bg, 0)
+		from friend_requests fr
+		join users u1 on u1.id = fr.from_user_id
+		left join user_settings s1 on s1.user_id = u1.id
+		join users u2 on u2.id = fr.to_user_id
+		left join user_settings s2 on s2.user_id = u2.id
+		where fr.to_user_id = $1 and fr.status = $2
+		order by fr.created_at desc
+	`, userID, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []dto.FriendRequest
+	for rows.Next() {
+		var fr dto.FriendRequest
+		var from dto.UserProfile
+		var to dto.UserProfile
+		if err := rows.Scan(
+			&fr.ID, &fr.Status, &fr.CreatedAt,
+			&from.UserID, &from.Name, &from.Email, &from.Emoji, &from.BgIndex,
+			&to.UserID, &to.Name, &to.Email, &to.Emoji, &to.BgIndex,
+		); err != nil {
+			return nil, err
+		}
+		fr.From = from
+		fr.To = to
+		out = append(out, fr)
+	}
+	return out, rows.Err()
+}
+
+func (r *Repository) RespondFriendRequest(ctx context.Context, userID int32, requestID int64, action string) error {
+	if r.pg == nil {
+		return errors.New("repository: postgres not configured")
+	}
+	if userID <= 0 || requestID <= 0 {
+		return errors.New("repository: invalid input")
+	}
+	action = strings.ToLower(strings.TrimSpace(action))
+	if action != "accept" && action != "decline" {
+		return errors.New("invalid action")
+	}
+
+	tx, err := r.pg.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var fromID, toID int32
+	err = tx.QueryRow(ctx, `
+		select from_user_id, to_user_id
+		from friend_requests
+		where id = $1 and status = 'pending'
+	`, requestID).Scan(&fromID, &toID)
+	if err != nil {
+		return err
+	}
+	if toID != userID {
+		return errors.New("forbidden")
+	}
+
+	if action == "accept" {
+		_, err = tx.Exec(ctx, `
+			insert into friends (user_id, friend_id)
+			values ($1, $2), ($2, $1)
+			on conflict do nothing
+		`, fromID, toID)
+		if err != nil {
+			return err
+		}
+	}
+
+	newStatus := "declined"
+	if action == "accept" {
+		newStatus = "accepted"
+	}
+	_, err = tx.Exec(ctx, `
+		update friend_requests
+		set status = $1
+		where id = $2
+	`, newStatus, requestID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func (r *Repository) UpsertLastAnalysis(ctx context.Context, userID int32, period string, resp dto.AnalyzeResponse) error {

@@ -7,6 +7,8 @@ type AIConfig struct {
 	Token        string
 	Model        string
 	SystemPrompt string
+	Fast         bool
+	MaxTokens    int
 	HTTPClient   *http.Client
 }
 
@@ -15,5 +17,7 @@ type AIClient struct {
 	token      string
 	model      string
 	system     string
+	fast       bool
+	maxTokens  int
 	httpClient *http.Client
 }

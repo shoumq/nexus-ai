@@ -15,6 +15,7 @@ FROM alpine:3.20
 WORKDIR /app
 
 COPY --from=build /app/bin/nexus /app/nexus
+COPY nexus-ai/migrations /app/migrations
 
 EXPOSE 9091
 

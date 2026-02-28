@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             v6.33.4
-// source: nexusai/v1/analyzer.proto
+// source: proto/nexusai/v1/analyzer.proto
 
 package nexusai
 
@@ -19,10 +19,19 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	AnalyzerService_Track_FullMethodName           = "/nexusai.v1.AnalyzerService/Track"
-	AnalyzerService_Analyze_FullMethodName         = "/nexusai.v1.AnalyzerService/Analyze"
-	AnalyzerService_GetTodayTrack_FullMethodName   = "/nexusai.v1.AnalyzerService/GetTodayTrack"
-	AnalyzerService_GetLastAnalyses_FullMethodName = "/nexusai.v1.AnalyzerService/GetLastAnalyses"
+	AnalyzerService_Track_FullMethodName                = "/nexusai.v1.AnalyzerService/Track"
+	AnalyzerService_Analyze_FullMethodName              = "/nexusai.v1.AnalyzerService/Analyze"
+	AnalyzerService_GetTodayTrack_FullMethodName        = "/nexusai.v1.AnalyzerService/GetTodayTrack"
+	AnalyzerService_GetLastAnalyses_FullMethodName      = "/nexusai.v1.AnalyzerService/GetLastAnalyses"
+	AnalyzerService_GetMyProfile_FullMethodName         = "/nexusai.v1.AnalyzerService/GetMyProfile"
+	AnalyzerService_UpdateMyProfile_FullMethodName      = "/nexusai.v1.AnalyzerService/UpdateMyProfile"
+	AnalyzerService_GetUserProfile_FullMethodName       = "/nexusai.v1.AnalyzerService/GetUserProfile"
+	AnalyzerService_GetUserLastAnalyses_FullMethodName  = "/nexusai.v1.AnalyzerService/GetUserLastAnalyses"
+	AnalyzerService_SearchUsers_FullMethodName          = "/nexusai.v1.AnalyzerService/SearchUsers"
+	AnalyzerService_ListFriends_FullMethodName          = "/nexusai.v1.AnalyzerService/ListFriends"
+	AnalyzerService_ListFriendRequests_FullMethodName   = "/nexusai.v1.AnalyzerService/ListFriendRequests"
+	AnalyzerService_SendFriendRequest_FullMethodName    = "/nexusai.v1.AnalyzerService/SendFriendRequest"
+	AnalyzerService_RespondFriendRequest_FullMethodName = "/nexusai.v1.AnalyzerService/RespondFriendRequest"
 )
 
 // AnalyzerServiceClient is the client API for AnalyzerService service.
@@ -33,6 +42,15 @@ type AnalyzerServiceClient interface {
 	Analyze(ctx context.Context, in *AnalyzeRequest, opts ...grpc.CallOption) (*AnalyzeResponse, error)
 	GetTodayTrack(ctx context.Context, in *TodayTrackRequest, opts ...grpc.CallOption) (*TodayTrackResponse, error)
 	GetLastAnalyses(ctx context.Context, in *LastAnalysesRequest, opts ...grpc.CallOption) (*LastAnalysesResponse, error)
+	GetMyProfile(ctx context.Context, in *GetMyProfileRequest, opts ...grpc.CallOption) (*GetMyProfileResponse, error)
+	UpdateMyProfile(ctx context.Context, in *UpdateProfileRequest, opts ...grpc.CallOption) (*UpdateProfileResponse, error)
+	GetUserProfile(ctx context.Context, in *GetUserProfileRequest, opts ...grpc.CallOption) (*GetUserProfileResponse, error)
+	GetUserLastAnalyses(ctx context.Context, in *GetUserLastAnalysesRequest, opts ...grpc.CallOption) (*LastAnalysesResponse, error)
+	SearchUsers(ctx context.Context, in *SearchUsersRequest, opts ...grpc.CallOption) (*SearchUsersResponse, error)
+	ListFriends(ctx context.Context, in *ListFriendsRequest, opts ...grpc.CallOption) (*ListFriendsResponse, error)
+	ListFriendRequests(ctx context.Context, in *ListFriendRequestsRequest, opts ...grpc.CallOption) (*ListFriendRequestsResponse, error)
+	SendFriendRequest(ctx context.Context, in *SendFriendRequestRequest, opts ...grpc.CallOption) (*SendFriendRequestResponse, error)
+	RespondFriendRequest(ctx context.Context, in *RespondFriendRequestRequest, opts ...grpc.CallOption) (*RespondFriendRequestResponse, error)
 }
 
 type analyzerServiceClient struct {
@@ -79,6 +97,87 @@ func (c *analyzerServiceClient) GetLastAnalyses(ctx context.Context, in *LastAna
 	return out, nil
 }
 
+func (c *analyzerServiceClient) GetMyProfile(ctx context.Context, in *GetMyProfileRequest, opts ...grpc.CallOption) (*GetMyProfileResponse, error) {
+	out := new(GetMyProfileResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_GetMyProfile_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerServiceClient) UpdateMyProfile(ctx context.Context, in *UpdateProfileRequest, opts ...grpc.CallOption) (*UpdateProfileResponse, error) {
+	out := new(UpdateProfileResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_UpdateMyProfile_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerServiceClient) GetUserProfile(ctx context.Context, in *GetUserProfileRequest, opts ...grpc.CallOption) (*GetUserProfileResponse, error) {
+	out := new(GetUserProfileResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_GetUserProfile_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerServiceClient) GetUserLastAnalyses(ctx context.Context, in *GetUserLastAnalysesRequest, opts ...grpc.CallOption) (*LastAnalysesResponse, error) {
+	out := new(LastAnalysesResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_GetUserLastAnalyses_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerServiceClient) SearchUsers(ctx context.Context, in *SearchUsersRequest, opts ...grpc.CallOption) (*SearchUsersResponse, error) {
+	out := new(SearchUsersResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_SearchUsers_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerServiceClient) ListFriends(ctx context.Context, in *ListFriendsRequest, opts ...grpc.CallOption) (*ListFriendsResponse, error) {
+	out := new(ListFriendsResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_ListFriends_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerServiceClient) ListFriendRequests(ctx context.Context, in *ListFriendRequestsRequest, opts ...grpc.CallOption) (*ListFriendRequestsResponse, error) {
+	out := new(ListFriendRequestsResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_ListFriendRequests_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerServiceClient) SendFriendRequest(ctx context.Context, in *SendFriendRequestRequest, opts ...grpc.CallOption) (*SendFriendRequestResponse, error) {
+	out := new(SendFriendRequestResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_SendFriendRequest_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyzerServiceClient) RespondFriendRequest(ctx context.Context, in *RespondFriendRequestRequest, opts ...grpc.CallOption) (*RespondFriendRequestResponse, error) {
+	out := new(RespondFriendRequestResponse)
+	err := c.cc.Invoke(ctx, AnalyzerService_RespondFriendRequest_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AnalyzerServiceServer is the server API for AnalyzerService service.
 // All implementations must embed UnimplementedAnalyzerServiceServer
 // for forward compatibility
@@ -87,6 +186,15 @@ type AnalyzerServiceServer interface {
 	Analyze(context.Context, *AnalyzeRequest) (*AnalyzeResponse, error)
 	GetTodayTrack(context.Context, *TodayTrackRequest) (*TodayTrackResponse, error)
 	GetLastAnalyses(context.Context, *LastAnalysesRequest) (*LastAnalysesResponse, error)
+	GetMyProfile(context.Context, *GetMyProfileRequest) (*GetMyProfileResponse, error)
+	UpdateMyProfile(context.Context, *UpdateProfileRequest) (*UpdateProfileResponse, error)
+	GetUserProfile(context.Context, *GetUserProfileRequest) (*GetUserProfileResponse, error)
+	GetUserLastAnalyses(context.Context, *GetUserLastAnalysesRequest) (*LastAnalysesResponse, error)
+	SearchUsers(context.Context, *SearchUsersRequest) (*SearchUsersResponse, error)
+	ListFriends(context.Context, *ListFriendsRequest) (*ListFriendsResponse, error)
+	ListFriendRequests(context.Context, *ListFriendRequestsRequest) (*ListFriendRequestsResponse, error)
+	SendFriendRequest(context.Context, *SendFriendRequestRequest) (*SendFriendRequestResponse, error)
+	RespondFriendRequest(context.Context, *RespondFriendRequestRequest) (*RespondFriendRequestResponse, error)
 	mustEmbedUnimplementedAnalyzerServiceServer()
 }
 
@@ -105,6 +213,33 @@ func (UnimplementedAnalyzerServiceServer) GetTodayTrack(context.Context, *TodayT
 }
 func (UnimplementedAnalyzerServiceServer) GetLastAnalyses(context.Context, *LastAnalysesRequest) (*LastAnalysesResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLastAnalyses not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) GetMyProfile(context.Context, *GetMyProfileRequest) (*GetMyProfileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetMyProfile not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) UpdateMyProfile(context.Context, *UpdateProfileRequest) (*UpdateProfileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateMyProfile not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) GetUserProfile(context.Context, *GetUserProfileRequest) (*GetUserProfileResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUserProfile not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) GetUserLastAnalyses(context.Context, *GetUserLastAnalysesRequest) (*LastAnalysesResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetUserLastAnalyses not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) SearchUsers(context.Context, *SearchUsersRequest) (*SearchUsersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SearchUsers not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) ListFriends(context.Context, *ListFriendsRequest) (*ListFriendsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListFriends not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) ListFriendRequests(context.Context, *ListFriendRequestsRequest) (*ListFriendRequestsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListFriendRequests not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) SendFriendRequest(context.Context, *SendFriendRequestRequest) (*SendFriendRequestResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SendFriendRequest not implemented")
+}
+func (UnimplementedAnalyzerServiceServer) RespondFriendRequest(context.Context, *RespondFriendRequestRequest) (*RespondFriendRequestResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RespondFriendRequest not implemented")
 }
 func (UnimplementedAnalyzerServiceServer) mustEmbedUnimplementedAnalyzerServiceServer() {}
 
@@ -191,6 +326,168 @@ func _AnalyzerService_GetLastAnalyses_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AnalyzerService_GetMyProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetMyProfileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).GetMyProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_GetMyProfile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).GetMyProfile(ctx, req.(*GetMyProfileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyzerService_UpdateMyProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateProfileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).UpdateMyProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_UpdateMyProfile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).UpdateMyProfile(ctx, req.(*UpdateProfileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyzerService_GetUserProfile_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserProfileRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).GetUserProfile(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_GetUserProfile_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).GetUserProfile(ctx, req.(*GetUserProfileRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyzerService_GetUserLastAnalyses_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetUserLastAnalysesRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).GetUserLastAnalyses(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_GetUserLastAnalyses_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).GetUserLastAnalyses(ctx, req.(*GetUserLastAnalysesRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyzerService_SearchUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SearchUsersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).SearchUsers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_SearchUsers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).SearchUsers(ctx, req.(*SearchUsersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyzerService_ListFriends_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListFriendsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).ListFriends(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_ListFriends_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).ListFriends(ctx, req.(*ListFriendsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyzerService_ListFriendRequests_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListFriendRequestsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).ListFriendRequests(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_ListFriendRequests_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).ListFriendRequests(ctx, req.(*ListFriendRequestsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyzerService_SendFriendRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SendFriendRequestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).SendFriendRequest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_SendFriendRequest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).SendFriendRequest(ctx, req.(*SendFriendRequestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyzerService_RespondFriendRequest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RespondFriendRequestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyzerServiceServer).RespondFriendRequest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyzerService_RespondFriendRequest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyzerServiceServer).RespondFriendRequest(ctx, req.(*RespondFriendRequestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AnalyzerService_ServiceDesc is the grpc.ServiceDesc for AnalyzerService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -214,7 +511,43 @@ var AnalyzerService_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GetLastAnalyses",
 			Handler:    _AnalyzerService_GetLastAnalyses_Handler,
 		},
+		{
+			MethodName: "GetMyProfile",
+			Handler:    _AnalyzerService_GetMyProfile_Handler,
+		},
+		{
+			MethodName: "UpdateMyProfile",
+			Handler:    _AnalyzerService_UpdateMyProfile_Handler,
+		},
+		{
+			MethodName: "GetUserProfile",
+			Handler:    _AnalyzerService_GetUserProfile_Handler,
+		},
+		{
+			MethodName: "GetUserLastAnalyses",
+			Handler:    _AnalyzerService_GetUserLastAnalyses_Handler,
+		},
+		{
+			MethodName: "SearchUsers",
+			Handler:    _AnalyzerService_SearchUsers_Handler,
+		},
+		{
+			MethodName: "ListFriends",
+			Handler:    _AnalyzerService_ListFriends_Handler,
+		},
+		{
+			MethodName: "ListFriendRequests",
+			Handler:    _AnalyzerService_ListFriendRequests_Handler,
+		},
+		{
+			MethodName: "SendFriendRequest",
+			Handler:    _AnalyzerService_SendFriendRequest_Handler,
+		},
+		{
+			MethodName: "RespondFriendRequest",
+			Handler:    _AnalyzerService_RespondFriendRequest_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "nexusai/v1/analyzer.proto",
+	Metadata: "proto/nexusai/v1/analyzer.proto",
 }

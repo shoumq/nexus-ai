@@ -31,6 +31,9 @@ func NewAIClient(cfg AIConfig) *AIClient {
 	if cfg.SystemPrompt == "" {
 		cfg.SystemPrompt = hepler.SystemPromptRU
 	}
+	if cfg.MaxTokens <= 0 {
+		cfg.MaxTokens = 1200
+	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = http.DefaultClient
 	}
@@ -40,6 +43,8 @@ func NewAIClient(cfg AIConfig) *AIClient {
 		token:      cfg.Token,
 		model:      cfg.Model,
 		system:     cfg.SystemPrompt,
+		fast:       cfg.Fast,
+		maxTokens:  cfg.MaxTokens,
 		httpClient: cfg.HTTPClient,
 	}
 }
@@ -47,17 +52,34 @@ func NewAIClient(cfg AIConfig) *AIClient {
 func (c *AIClient) CallInsight(ctx context.Context, p dto.AIPrompt) (string, error) {
 	userPrompt := hepler.BuildRussianPrompt(p)
 
-	text1, finish1, err := c.aiChatOnce(ctx, c.url, c.token, c.model, c.system, userPrompt, 1200)
+	system := c.system
+	if p.Period == dto.PeriodMonth || p.Period == dto.PeriodAll {
+		system = hepler.SystemPromptRUPeriod
+	}
+
+	maxTokens := c.maxTokens
+	if maxTokens <= 0 {
+		maxTokens = 1200
+	}
+
+	text1, finish1, err := c.aiChatOnce(ctx, c.url, c.token, c.model, system, userPrompt, maxTokens)
 	if err != nil {
 		return "", err
 	}
 	text1 = toPlainText(text1)
 	text1 = sanitizeInsight(text1, p)
 
+	if c.fast {
+		if strings.TrimSpace(text1) == "" {
+			return "", errors.New("ai empty content after cleaning")
+		}
+		return text1, nil
+	}
+
 	if isTruncated(finish1, text1) {
 		contPrompt := fmt.Sprintf(hepler.ContinuePromptTmplRU, text1)
 
-		text2, _, err2 := c.aiChatOnce(ctx, c.url, c.token, c.model, c.system, contPrompt, 900)
+		text2, _, err2 := c.aiChatOnce(ctx, c.url, c.token, c.model, system, contPrompt, 900)
 		if err2 == nil {
 			text2 = toPlainText(text2)
 			text2 = sanitizeInsight(text2, p)
@@ -69,16 +91,27 @@ func (c *AIClient) CallInsight(ctx context.Context, p dto.AIPrompt) (string, err
 	}
 
 	if !validateInsight(text1, p) {
-		rep := fmt.Sprintf(
-			hepler.RepairPromptTmplRU,
-			p.NumPoints,
-			p.NumObservedWeekdays,
-			p.ObservedWeekdaysList,
-			p.BurnoutLevel,
-			text1,
-		)
+		var rep string
+		if p.Period == dto.PeriodMonth || p.Period == dto.PeriodAll {
+			rep = fmt.Sprintf(
+				hepler.RepairPromptTmplRUPeriod,
+				p.NumPoints,
+				p.NumObservedDays,
+				p.BurnoutLevel,
+				text1,
+			)
+		} else {
+			rep = fmt.Sprintf(
+				hepler.RepairPromptTmplRU,
+				p.NumPoints,
+				p.NumObservedDays,
+				p.ObservedWeekdaysList,
+				p.BurnoutLevel,
+				text1,
+			)
+		}
 
-		fixed, _, err3 := c.aiChatOnce(ctx, c.url, c.token, c.model, c.system, rep, 1200)
+		fixed, _, err3 := c.aiChatOnce(ctx, c.url, c.token, c.model, system, rep, 1200)
 		if err3 == nil {
 			fixed = toPlainText(fixed)
 			fixed = sanitizeInsight(fixed, p)
@@ -271,7 +304,12 @@ func sanitizeInsight(text string, p dto.AIPrompt) string {
 	}
 	t = strings.TrimSpace(strings.Join(out, "\n"))
 
-	if p.NumPoints >= 5 && p.NumObservedWeekdays >= 5 {
+	obsDays := p.NumObservedDays
+	if obsDays == 0 {
+		obsDays = p.NumObservedWeekdays
+	}
+
+	if p.NumPoints >= 5 && obsDays >= 5 {
 		t = removeLinesContaining(t, []string{"данных мало", "вывод предварител"})
 	}
 
@@ -338,7 +376,12 @@ func validateInsight(text string, p dto.AIPrompt) bool {
 		}
 	}
 
-	if p.NumPoints >= 5 && p.NumObservedWeekdays >= 5 {
+	obsDays := p.NumObservedDays
+	if obsDays == 0 {
+		obsDays = p.NumObservedWeekdays
+	}
+
+	if p.NumPoints >= 5 && obsDays >= 5 {
 		low := strings.ToLower(t)
 		if strings.Contains(low, "данных мало") || strings.Contains(low, "вывод предварител") {
 			return false

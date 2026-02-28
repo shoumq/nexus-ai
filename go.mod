@@ -6,11 +6,15 @@ require (
 	auth_service v0.0.0
 	github.com/gofiber/fiber/v3 v3.0.0
 	github.com/jackc/pgx/v5 v5.8.0
+	github.com/pressly/goose/v3 v3.26.0
 	github.com/redis/go-redis/v9 v9.6.2
 )
 
 require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0 // indirect
+	github.com/mfridman/interpolate v0.0.2 // indirect
+	github.com/sethvargo/go-retry v0.3.0 // indirect
+	go.uber.org/multierr v1.11.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260209200024-4cfbd4190f57 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260209200024-4cfbd4190f57 // indirect
 )

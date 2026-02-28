@@ -7,6 +7,8 @@ import "time"
 type TrackPoint struct {
 	TS            time.Time `json:"ts"`
 	SleepHours    float64   `json:"sleep_hours"`
+	SleepStart    string    `json:"sleep_start"`
+	SleepEnd      string    `json:"sleep_end"`
 	Mood          float64   `json:"mood"`
 	Activity      float64   `json:"activity"`
 	Productive    float64   `json:"productive"`
@@ -18,6 +20,7 @@ type TrackPoint struct {
 	Alcohol       bool      `json:"alcohol"`
 	Workout       bool      `json:"workout"`
 	LLMText       string    `json:"llm_text"`
+	AnalysisStatus string   `json:"analysis_status"`
 }
 
 type Period string
@@ -34,6 +37,23 @@ type TrackRequest struct {
 	UserID int32        `json:"-"`
 	UserTZ string       `json:"user_tz"`
 	Points []TrackPoint `json:"points"`
+}
+
+type UserProfile struct {
+	UserID  int32  `json:"user_id"`
+	Name    string `json:"name"`
+	Email   string `json:"email"`
+	Emoji   string `json:"emoji"`
+	BgIndex int32  `json:"bg_index"`
+	IsFriend bool  `json:"is_friend"`
+}
+
+type FriendRequest struct {
+	ID        int64       `json:"id"`
+	From      UserProfile `json:"from"`
+	To        UserProfile `json:"to"`
+	Status    string      `json:"status"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 type AnalyzeRequest struct {
@@ -88,6 +108,9 @@ type Win struct {
 
 type AIPrompt struct {
 	UserTZ               string
+	Period               Period
+	PeriodStart          time.Time
+	PeriodEnd            time.Time
 	EnergyByWeekday      map[string]float64
 	ProductivityScore    float64
 	BurnoutScore         float64
@@ -95,8 +118,25 @@ type AIPrompt struct {
 	BurnoutReasons       []string
 	NumPoints            int
 	NumObservedWeekdays  int
+	NumObservedDays      int
 	ObservedWeekdaysList string
 	UserNotes            string
+	AvgSleepHours        float64
+	AvgSleepQuality      float64
+	AvgMood              float64
+	AvgActivity          float64
+	AvgProductive        float64
+	AvgStress            float64
+	AvgEnergy            float64
+	AvgConcentration     float64
+	AvgSleepStart        string
+	AvgSleepEnd          string
+	MinEnergy            float64
+	MaxEnergy            float64
+	MinStress            float64
+	MaxStress            float64
+	MinSleepHours        float64
+	MaxSleepHours        float64
 }
 
 // ====== AI chat API payloads ======

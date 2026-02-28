@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"log"
 	"net"
 	"net/http"
@@ -19,6 +20,8 @@ import (
 
 	authpb "auth_service/proto"
 
+	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/health"
@@ -39,6 +42,13 @@ func main() {
 	}
 
 	disableLLM := os.Getenv("DISABLE_LLM") == "1" || os.Getenv("DISABLE_LLM") == "true"
+	fastLLM := true
+	maxTokens := 1200
+	if v := os.Getenv("DEEPSEEK_MAX_TOKENS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxTokens = n
+		}
+	}
 	dsTimeout := 60 * time.Second
 	if v := os.Getenv("DEEPSEEK_TIMEOUT"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
@@ -50,6 +60,8 @@ func main() {
 	if !disableLLM && dsToken != "" {
 		llmClient = *llm.NewAIClient(llm.AIConfig{
 			Token:      dsToken,
+			Fast:       fastLLM,
+			MaxTokens:  maxTokens,
 			HTTPClient: &http.Client{Timeout: dsTimeout},
 		})
 	} else {
@@ -67,6 +79,11 @@ func main() {
 	pgURL := os.Getenv("DATABASE_URL")
 	redisAddr := os.Getenv("REDIS_ADDR")
 	if pgURL != "" || redisAddr != "" {
+		if pgURL != "" {
+			if err := runMigrations(pgURL); err != nil {
+				log.Fatalf("migrations: %v", err)
+			}
+		}
 		redisDB := 0
 		if v := os.Getenv("REDIS_DB"); v != "" {
 			if n, err := strconv.Atoi(v); err == nil {
@@ -82,12 +99,6 @@ func main() {
 		if err != nil {
 			log.Fatalf("repository init: %v", err)
 		}
-		migCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		if err := r.AutoMigrate(migCtx); err != nil {
-			cancel()
-			log.Fatalf("repository migrate: %v", err)
-		}
-		cancel()
 		repo = r
 	}
 
@@ -143,6 +154,35 @@ func main() {
 		}
 		grpcServer.GracefulStop()
 	}
+}
+
+func runMigrations(dsn string) error {
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	db.SetMaxOpenConns(5)
+	db.SetConnMaxLifetime(5 * time.Minute)
+
+	var pingErr error
+	for i := 0; i < 10; i++ {
+		pingErr = db.Ping()
+		if pingErr == nil {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if pingErr != nil {
+		return pingErr
+	}
+
+	if err := goose.SetDialect("postgres"); err != nil {
+		return err
+	}
+	goose.SetTableName("nexus_ai_goose_db_version")
+	return goose.Up(db, "migrations")
 }
 
 func startDailyAnalysisScheduler(analyzer *usecase.Analyzer, repo *repository.Repository) {
